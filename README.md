@@ -1,63 +1,76 @@
 # Ferry
 
-Share a folder or a website from your computer, and open it in a browser on any other device: a phone, a laptop, a friend's PC. It works on the same Wi-Fi, and from anywhere if you turn that on. It's free, needs no account, and the other device doesn't need to install anything.
+Ferry lets you open a folder or a website from your computer on any other device, just by using its browser. Phones, laptops, a friend's PC: nothing needs installing on their end. It works on the same Wi-Fi, and from anywhere if you switch that on. It's free and there's no account.
+
+I built it because every time I wanted to move a few files between my own devices, or show someone a site I was working on, I ended up reaching for a paid service or a cable.
 
 <p align="center"><img src="docs/app.png" width="640" alt="The Ferry window while sharing a folder, showing the PIN, link and QR code"></p>
 
 ## Download
 
-Get the latest version from the [Releases page](../../releases/latest).
+Grab the latest version from the [Releases page](../../releases/latest).
 
 | Computer | File |
 | --- | --- |
-| Windows | `ferry-windows-x64.exe` (`ferry-windows-arm64.exe` for ARM laptops like Surface Pro X / Snapdragon) |
+| Windows | `ferry-windows-x64.exe` (or `ferry-windows-arm64.exe` for ARM laptops, like Snapdragon ones) |
 | Mac (Apple Silicon or Intel) | `ferry-mac.zip` |
 
-### First time on Windows
+### Opening it the first time on Windows
 
-Windows shows **"Windows protected your PC"** because the app isn't from a paid developer account. Click **More info**, then **Run anyway**.
+Windows will say **"Windows protected your PC"**, because I don't pay for a code signing certificate. Click **More info**, then **Run anyway**.
 
-When you start sharing, Windows asks whether to allow Ferry on networks. Choose **Allow** (private networks), or other devices won't be able to connect.
+When you start sharing, Windows asks if Ferry can use the network. Pick **Allow** (private networks), otherwise other devices can't reach it.
 
-### First time on Mac
+### Opening it the first time on Mac
 
-1. Unzip `ferry-mac.zip` and drag **Ferry** into your **Applications** folder.
-2. Open it. macOS says it can't check the app for malware. Click **Done**.
-3. Open **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to Ferry. Confirm with your password.
+1. Unzip `ferry-mac.zip` and drag **Ferry** into **Applications**.
+2. Open it. macOS will say it can't check the app for malware. Click **Done**.
+3. Go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to Ferry. Enter your password.
 
-You only need to do this once. If macOS asks whether Ferry may accept incoming connections, click **Allow**.
+You only have to do that once. If macOS asks whether Ferry can accept incoming connections, say **Allow**.
 
-## How to use it
+## Using it
 
-1. Open Ferry. Its window opens in your browser.
+1. Open Ferry. A short animation plays and then its window opens in your browser.
 2. Choose **A folder** or **A website**.
 3. Click **Start sharing**.
-4. On the other device, scan the QR code, or type the link and the PIN.
+4. On the other device, scan the QR code, or type in the link and the PIN.
 
-Ferry has no Dock or taskbar icon. Close the tab whenever you like, and sharing keeps going. Open Ferry again to get the window back, and use **Stop sharing** or **Quit Ferry** when you're done. If nothing is being shared and the window is closed, Ferry quits by itself after a few minutes.
+Ferry doesn't sit in the Dock or taskbar. You can close the tab and sharing carries on. Open Ferry again to get the window back, and hit **Stop sharing** or **Quit Ferry** when you're finished. If nothing is being shared and the window has been closed for 3 minutes, it quits on its own.
 
-### What visitors can do
+### Sharing a folder
 
-**A folder:** browse it, open or download files, download a whole folder as a zip, and upload files by dragging them onto the page (you can turn uploads off). Uploads never overwrite anything: a second `photo.jpg` is saved as `photo (1).jpg`.
+People can browse it, open or download files, grab a whole folder as a zip, and drag files onto the page to upload them. You can turn uploads off before you start. Nothing gets overwritten: if someone uploads a second `photo.jpg` it's saved as `photo (1).jpg`.
 
-**A website:** use a website running on your computer (for example a dev server on port 3000) as if they were sitting at it. Live reload works too.
+### Sharing a website
+
+If you've got a site running on your computer, like a dev server on port 3000, Ferry passes visitors through to it so they see exactly what you see. Live reload still works.
 
 ### Access from anywhere
 
-Tick **Also allow access from outside this Wi-Fi**. Ferry gives you a second link that works from any network, using a free Cloudflare tunnel. The first time, it downloads Cloudflare's official `cloudflared` helper (about 40 MB) and keeps it for next time. You get a new random link each time you start sharing, and visitors still need the PIN.
+Tick **Also allow access from outside this Wi-Fi** and you get a second link that works on any network. It uses a free Cloudflare tunnel. The first time, Ferry downloads Cloudflare's official `cloudflared` program (about 40 MB) and keeps it for next time. The link changes every time you start sharing, and visitors still need the PIN.
 
-## Safety
+## Keeping it safe
 
-- Nothing can be opened without the PIN or a QR code. Each time you start sharing you get a new PIN.
-- After 5 wrong PINs a device is locked out for a minute. After 30 wrong PINs from anyone, all logins pause for 10 minutes.
-- Visitors can't reach anything outside the folder you chose.
-- The QR codes log in without the PIN, so only show them to people you trust.
+- Nobody gets in without the PIN or one of the QR codes. You get a new PIN every time you start sharing.
+- 5 wrong PINs locks that device out for a minute. 30 wrong PINs from anyone pauses all logins for 10 minutes.
+- Visitors can't see anything outside the folder you picked.
+- The QR codes log people in without the PIN, so only show them to people you trust.
 - The Ferry window only opens on your own computer. Other devices can't control it.
-- On the same Wi-Fi the connection isn't encrypted, so anyone on that network could in theory see what's being sent. Use it on networks you trust. The anywhere link is encrypted (HTTPS).
+- On the same Wi-Fi the connection isn't encrypted, so someone else on that network could in theory see what's being sent. Stick to networks you trust. The anywhere link is encrypted (HTTPS).
+
+## Where it keeps things
+
+Ferry remembers your last choices (folder, port, checkboxes) in a small settings file in your user config folder:
+
+- Windows: `%AppData%\ferry`
+- Mac: `~/Library/Application Support/ferry`
+
+The downloaded `cloudflared` goes in your cache folder under `ferry`. Delete either folder to reset it.
 
 ## Terminal version
 
-The same program also runs from a terminal. Download `ferry-cli-windows-x64.exe`, `ferry-cli-mac-arm64`, `ferry-cli-mac-intel` or `ferry-linux-x64`, then:
+It's the same program, just run from a terminal. Download `ferry-cli-windows-x64.exe`, `ferry-cli-mac-arm64`, `ferry-cli-mac-intel` or `ferry-linux-x64` and run:
 
 ```
 ferry files                  share the current folder
@@ -65,21 +78,21 @@ ferry files ~/Pictures       share a specific folder
 ferry site 3000              share a website running on port 3000
 
   --internet     also give a link that works from anywhere
-  --pin 123456   choose the PIN yourself
-  --port 8080    choose the port (default: first free one from 8080)
-  --read-only    visitors can download but not upload
+  --pin 123456   pick the PIN yourself
+  --port 8080    pick the port (otherwise the first free one from 8080)
+  --read-only    people can download but not upload
 ```
 
-## Troubleshooting
+## If something's not working
 
-- **The other device can't connect.** Check both are on the same Wi-Fi (not a guest network) and that you allowed Ferry through the firewall. On Windows: Settings > Privacy & security > Windows Security > Firewall > Allow an app through firewall.
-- **The website option says "The website is not running".** Start your website on this computer first, check the port number, then reload.
-- **The anywhere link doesn't appear.** It needs a working internet connection and can take up to 30 seconds. Some school and work networks block it.
-- **Sharing stops when the computer sleeps.** Keep it awake while sharing.
+- **The other device can't connect.** Make sure both are on the same Wi-Fi (not a guest network) and that Ferry is allowed through the firewall. On Windows that's Settings > Privacy & security > Windows Security > Firewall > Allow an app through firewall.
+- **Website mode says "The website is not running".** Start the site on your computer first, double check the port, then reload.
+- **The anywhere link never shows up.** It needs a working internet connection and can take up to 45 seconds. Some school and work networks block it.
+- **Sharing stops when the computer goes to sleep.** Keep it awake while you're sharing.
 
 ## Building it yourself
 
-You need [Go](https://go.dev/dl/) 1.24 or newer.
+You'll need [Go](https://go.dev/dl/) 1.24 or newer.
 
 ```
 go run .                     run the app
@@ -87,7 +100,7 @@ go test ./...                run the tests
 scripts/build.sh             build everything into dist/
 ```
 
-The Mac app is only built as a universal, signed app when `scripts/build.sh mac` runs on a Mac. Pushing a tag like `v0.2.0` builds everything on GitHub and publishes a release automatically.
+The Mac app only comes out universal and signed when `scripts/build.sh mac` runs on a Mac. Pushing a tag like `v0.2.0` makes GitHub build everything and publish a release.
 
 ## License
 
