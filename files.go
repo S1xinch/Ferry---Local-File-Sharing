@@ -101,9 +101,25 @@ func (s *fileShare) serveGet(w http.ResponseWriter, r *http.Request, p string) {
 	s.list(w, r, p, entries)
 }
 
+// Image files get a real thumbnail. Bigger ones get a type tile instead, so a
+// folder of camera originals still opens quickly.
+const maxThumb = 30 << 20
+
+var thumbExts = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true}
+
 type entry struct {
 	Name, Href, Size, Modified string
-	IsDir                      bool
+	Badge                      string // short type label for the tile, e.g. "PDF"
+	IsDir, Thumb               bool
+}
+
+// badge is the label on a file's tile: the extension in capitals, or FILE.
+func badge(ext string) string {
+	ext = strings.TrimPrefix(ext, ".")
+	if ext == "" || len(ext) > 4 {
+		return "FILE"
+	}
+	return strings.ToUpper(ext)
 }
 
 type crumb struct{ Name, Href string }
@@ -152,6 +168,9 @@ func (s *fileShare) list(w http.ResponseWriter, r *http.Request, p string, des [
 			e.Size = "folder"
 		} else {
 			e.Size = humanSize(info.Size())
+			ext := strings.ToLower(path.Ext(d.Name()))
+			e.Thumb = thumbExts[ext] && info.Size() <= maxThumb
+			e.Badge = badge(ext)
 		}
 		page.Entries = append(page.Entries, e)
 	}

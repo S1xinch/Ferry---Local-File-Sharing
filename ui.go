@@ -67,8 +67,11 @@ table{width:100%;border-collapse:collapse}
 td{padding:10px 14px;border-top:1px solid var(--line)}
 tr:first-child td{border-top:0}
 td.name a{text-decoration:none;color:var(--text);word-break:break-word}
-td.name .kind{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:10px;background:var(--line)}
-td.name .kind.dir{background:var(--accent)}
+td.thumb{width:56px;padding-right:0}
+td.thumb a{display:block;width:56px;height:56px;text-decoration:none}
+td.thumb img{display:block;width:56px;height:56px;object-fit:cover;border-radius:6px;background:var(--bg)}
+.tile{display:grid;place-items:center;width:56px;height:56px;border-radius:6px;background:var(--bg);border:1px solid var(--line);color:var(--muted);font:700 12px/1 system-ui,sans-serif;letter-spacing:.04em}
+.tile.dir{background:var(--accent);border-color:transparent;color:var(--accent-text)}
 td.meta{color:var(--muted);white-space:nowrap;font-size:14px;text-align:right}
 td.act{width:1%;white-space:nowrap}
 td.act a{font-size:14px}
@@ -94,7 +97,8 @@ progress{width:100%;margin-top:10px}
 {{end}}
 <div class="card">{{if .Entries}}<table>
 {{range .Entries}}<tr>
-<td class="name"><span class="kind{{if .IsDir}} dir{{end}}"></span><a href="{{.Href}}">{{.Name}}</a></td>
+<td class="thumb"><a href="{{.Href}}" tabindex="-1" aria-hidden="true">{{if .Thumb}}<img src="{{.Href}}" alt="" loading="lazy" decoding="async">{{else if .IsDir}}<span class="tile dir">Folder</span>{{else}}<span class="tile">{{.Badge}}</span>{{end}}</a></td>
+<td class="name"><a href="{{.Href}}">{{.Name}}</a></td>
 <td class="meta">{{.Size}}</td>
 <td class="meta date">{{.Modified}}</td>
 <td class="act">{{if .IsDir}}<a href="{{.Href}}?zip">zip</a>{{else}}<a href="{{.Href}}?dl">download</a>{{end}}</td>

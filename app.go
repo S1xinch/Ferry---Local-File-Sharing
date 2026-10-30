@@ -44,6 +44,9 @@ type app struct {
 	cur      *share
 	lastSeen time.Time
 	settings settings
+	update   updateState
+	staged   *stagedUpdate
+	relaunch string // set when an update is installed; started after this copy closes
 }
 
 func configDir() string {
@@ -54,10 +57,12 @@ func configDir() string {
 	return filepath.Join(d, "ferry")
 }
 
-func runApp() error {
+// runApp opens the app window. If an update was installed, it returns the
+// program to start once this copy has closed.
+func runApp() (string, error) {
 	dir := configDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
+		return "", err
 	}
 	tokenFile := filepath.Join(dir, "panel-token")
 
@@ -65,10 +70,10 @@ func runApp() error {
 	if err != nil {
 		// Already running: just show its window again.
 		if tok, e := os.ReadFile(tokenFile); e == nil && panelAlive(panelPort) {
-			return openBrowser(panelURL(panelPort, strings.TrimSpace(string(tok))))
+			return "", openBrowser(panelURL(panelPort, strings.TrimSpace(string(tok))))
 		}
 		if ln, err = net.Listen("tcp", "127.0.0.1:0"); err != nil {
-			return err
+			return "", err
 		}
 	}
 
@@ -81,8 +86,9 @@ func runApp() error {
 		settings: settings{Mode: "files", Target: 3000, Uploads: true},
 	}
 	a.loadSettings()
+	cleanupUpdateLeftovers()
 	if err := os.WriteFile(tokenFile, []byte(a.token), 0o600); err != nil {
-		return err
+		return "", err
 	}
 	defer os.Remove(tokenFile)
 
@@ -91,17 +97,20 @@ func runApp() error {
 	defer srv.Close()
 
 	if err := openBrowser(panelURL(a.port, a.token)); err != nil {
-		return fmt.Errorf("could not open your browser: %w", err)
+		return "", fmt.Errorf("could not open your browser: %w", err)
 	}
 	go a.idleWatch()
+	go a.checkForUpdate()
 	<-a.quit
 
 	a.mu.Lock()
 	if a.cur != nil {
 		a.cur.stop()
 	}
+	relaunch := a.relaunch
 	a.mu.Unlock()
-	return nil
+	// The deferred cleanup (port, token file) runs before main starts the new copy.
+	return relaunch, nil
 }
 
 func panelURL(port int, token string) string {
@@ -154,6 +163,7 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /api/start", a.api(a.start))
 	mux.HandleFunc("POST /api/stop", a.api(a.stop))
 	mux.HandleFunc("POST /api/quit", a.api(a.quitHandler))
+	mux.HandleFunc("POST /api/update", a.api(a.updateNow))
 	return a.guard(mux)
 }
 
@@ -228,13 +238,14 @@ type link struct {
 }
 
 type state struct {
-	Running        bool     `json:"running"`
-	Settings       settings `json:"settings"`
-	What           string   `json:"what"`
-	PIN            string   `json:"pin"`
-	Links          []link   `json:"links"`
-	InternetStatus string   `json:"internetStatus"`
-	Activity       []string `json:"activity"`
+	Running        bool        `json:"running"`
+	Settings       settings    `json:"settings"`
+	What           string      `json:"what"`
+	PIN            string      `json:"pin"`
+	Links          []link      `json:"links"`
+	InternetStatus string      `json:"internetStatus"`
+	Activity       []string    `json:"activity"`
+	Update         updateState `json:"update"`
 }
 
 func qrDataURL(text string) string {
@@ -247,7 +258,7 @@ func qrDataURL(text string) string {
 
 func (a *app) state(r *http.Request) (any, error) {
 	a.mu.Lock()
-	s, st := a.cur, state{Settings: a.settings, Activity: recentActivity(30)}
+	s, st := a.cur, state{Settings: a.settings, Activity: recentActivity(30), Update: a.update}
 	a.mu.Unlock()
 	if s == nil {
 		return st, nil
