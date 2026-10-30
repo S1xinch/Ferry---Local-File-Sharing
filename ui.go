@@ -24,7 +24,7 @@ var pages = template.Must(template.New("").Parse(`
 <meta name="robots" content="noindex">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f6f5c'/%3E%3Cpath d='M11 7.5v17M11 7.5h11M11 16h8' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
-:root{--bg:#f6f5f2;--card:#fff;--text:#1d1d1b;--muted:#6b6a65;--line:#e3e1db;--accent:#1f6f5c;--accent-text:#fff;--bad:#a8322a}
+:root{--bg:#f3f1ec;--card:#fdfcf9;--text:#1d1d1b;--muted:#6b6a65;--line:#e3e1db;--accent:#1f6f5c;--accent-text:#fff;--bad:#a8322a}
 @media (prefers-color-scheme:dark){:root{--bg:#161615;--card:#1f1f1d;--text:#ecebe6;--muted:#9a9890;--line:#33322e;--accent:#4fb396;--accent-text:#0d1f1a;--bad:#ff8a80}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
