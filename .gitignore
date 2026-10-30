@@ -1,0 +1,7 @@
+dist/
+/ferry
+
+*.exe
+*.syso
+graphify-out/
+.DS_Store
