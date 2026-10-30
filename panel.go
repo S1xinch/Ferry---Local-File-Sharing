@@ -74,6 +74,8 @@ input[type=number]{width:140px}
 #log li{border-top:1px solid var(--line);padding:2px 0}
 #log li:first-child{border-top:0}
 #closed{display:none;padding:14px 16px;margin-bottom:16px;border-color:var(--bad)}
+#update{border-color:var(--accent)}
+#update .top{align-items:center}
 .label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 </style></head><body>
 <div id="intro" aria-hidden="true" title="Click to skip">
@@ -109,6 +111,11 @@ input[type=number]{width:140px}
 <button class="btn plain small" id="quit">Quit Ferry</button></header>
 
 <div class="card" id="closed">Ferry has closed. Open the app again to keep sharing.</div>
+
+<section class="card" id="update" hidden>
+<div class="top"><div><div class="label">Update ready</div><p class="what" id="update-text"></p></div>
+<button type="button" id="update-go">Restart to update</button></div>
+</section>
 
 <section class="card" id="setup" hidden>
 <h2>What do you want to share?</h2>
@@ -193,6 +200,18 @@ $("quit").onclick = function () {
   call("/api/quit", {}).finally(function () { $("closed").hidden = false; $("closed").style.display = "block"; });
 };
 
+$("update-go").onclick = function () {
+  if (running && !confirm("Updating restarts Ferry and stops sharing. Update now?")) return;
+  $("update-go").disabled = true;
+  call("/api/update", {}).then(function () {
+    $("closed").textContent = "Ferry is restarting with the new version. Its window will open in a moment.";
+    $("closed").style.display = "block";
+  }).catch(function (e) {
+    $("update-go").disabled = false;
+    $("update-text").textContent = e.message;
+  });
+};
+
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
 
 function renderLinks(links) {
@@ -220,6 +239,9 @@ function render(s) {
   running = s.running;
   $("setup").hidden = s.running;
   $("live").hidden = !s.running;
+  var u = s.update || {};
+  $("update").hidden = !u.ready;
+  if (u.ready) $("update-text").textContent = "Ferry " + u.version + " is downloaded. Restart Ferry to switch to it. Your settings are kept.";
   if (!formFilled) {
     var st = s.settings;
     setMode(st.mode || "files");

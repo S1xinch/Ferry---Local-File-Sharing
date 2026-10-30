@@ -40,7 +40,7 @@ Ferry doesn't sit in the Dock or taskbar. You can close the tab and sharing carr
 
 ### Sharing a folder
 
-People can browse it, open or download files, grab a whole folder as a zip, and drag files onto the page to upload them. You can turn uploads off before you start. Nothing gets overwritten: if someone uploads a second `photo.jpg` it's saved as `photo (1).jpg`.
+People can browse it, open or download files, grab a whole folder as a zip, and drag files onto the page to upload them. Pictures show a small thumbnail in the list, and other files show a tag with their type, like PDF or ZIP. You can turn uploads off before you start. Nothing gets overwritten: if someone uploads a second `photo.jpg` it's saved as `photo (1).jpg`.
 
 ### Sharing a website
 
@@ -49,6 +49,10 @@ If you've got a site running on your computer, like a dev server on port 3000, F
 ### Access from anywhere
 
 Tick **Also allow access from outside this Wi-Fi** and you get a second link that works on any network. It uses a free Cloudflare tunnel. The first time, Ferry downloads Cloudflare's official `cloudflared` program (about 40 MB) and keeps it for next time. The link changes every time you start sharing, and visitors still need the PIN.
+
+### Updates
+
+Each time Ferry opens, it checks GitHub for a newer release. If there is one, it downloads it in the background and the window shows an **Update ready** banner. Click **Restart to update** when it suits you. Ferry restarts on the new version, and your settings are kept. Sharing stops during the restart, so you'll need to start it again. If the check can't reach GitHub, Ferry just tries again next time.
 
 ## Keeping it safe
 

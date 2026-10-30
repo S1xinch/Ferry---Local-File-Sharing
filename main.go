@@ -29,9 +29,13 @@ type config struct {
 
 func main() {
 	if len(os.Args) == 1 || isFinderLaunch(os.Args[1:]) {
-		if err := runApp(); err != nil {
+		next, err := runApp()
+		if err != nil {
 			showError("Ferry could not start: " + err.Error())
 			os.Exit(1)
+		}
+		if next != "" {
+			startProgram(next)
 		}
 		return
 	}
