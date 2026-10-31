@@ -179,6 +179,7 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /api/start", a.api(a.start))
 	mux.HandleFunc("POST /api/stop", a.api(a.stop))
 	mux.HandleFunc("POST /api/mirror/stop", a.api(a.stopMirror))
+	mux.HandleFunc("POST /api/discover", a.api(a.discover))
 	mux.HandleFunc("POST /api/quit", a.api(a.quitHandler))
 	mux.HandleFunc("POST /api/update", a.api(a.updateNow))
 	return a.guard(mux)
