@@ -137,8 +137,10 @@ input[type=number]{width:140px}
 
 <div id="receive-opts" hidden>
 <label class="field" for="server">Address of the other computer</label>
-<input type="text" id="server" placeholder="For example 100.64.0.5:8080" autocomplete="off">
-<p class="hint">Use the Tailscale address shown on the other computer, with the port Ferry shows there. Both computers need Ferry and Tailscale.</p>
+<input type="text" id="server" placeholder="For example 192.168.1.20:8080" autocomplete="off">
+<p class="hint">Find the computer below, or type the address shown in the Ferry window on it. Both computers need to be on the same Wi-Fi.</p>
+<button type="button" class="btn plain small" id="find">Find computers on this network</button>
+<div id="found" class="hint"></div>
 <label class="field" for="rfolder">Folder to keep up to date</label>
 <div class="row"><input type="text" id="rfolder" placeholder="Choose a folder, or paste its path"><button type="button" class="btn plain" id="rbrowse">Browse</button></div>
 <label class="field" for="rpin">PIN from the other computer</label>
@@ -206,6 +208,26 @@ function browseInto(button, input) {
 }
 $("browse").onclick = function () { browseInto($("browse"), $("folder")); };
 $("rbrowse").onclick = function () { browseInto($("rbrowse"), $("rfolder")); };
+
+$("find").onclick = function () {
+  $("find").disabled = true;
+  $("found").textContent = "Looking...";
+  call("/api/discover", {}).then(function (r) {
+    var box = $("found");
+    box.textContent = "";
+    if (!r.computers || !r.computers.length) {
+      box.textContent = "No Ferry computers answered. Check that both are on the same Wi-Fi and that the other one is sharing a folder.";
+      return;
+    }
+    r.computers.forEach(function (c) {
+      var b = el("button", "btn plain small", c.name + ": " + c.folder + " (" + c.addr + ")");
+      b.style.margin = "4px 6px 0 0";
+      b.onclick = function () { $("server").value = c.addr; };
+      box.appendChild(b);
+    });
+  }).catch(function (e) { $("found").textContent = e.message; })
+    .finally(function () { $("find").disabled = false; });
+};
 
 $("mirror-stop").onclick = function () { call("/api/mirror/stop", {}).then(refresh); };
 

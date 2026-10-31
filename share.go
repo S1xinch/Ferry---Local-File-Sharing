@@ -19,9 +19,10 @@ type share struct {
 	port int
 	srv  *http.Server
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	closer func()
+	ctx      context.Context
+	cancel   context.CancelFunc
+	closer   func()
+	stopFind func() // answers "who is sharing?" on the local network
 
 	mu        sync.Mutex
 	tunnelURL string
@@ -61,6 +62,10 @@ func startShare(cfg config) (*share, error) {
 		return nil, fmt.Errorf("could not open a port: %w", err)
 	}
 	s.port = ln.Addr().(*net.TCPAddr).Port
+	s.stopFind = func() {}
+	if cfg.mode == "files" {
+		s.stopFind = answerDiscovery(s.what, s.port)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__ferry/login", s.auth.loginHandler)
@@ -131,6 +136,7 @@ func (s *share) stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	s.srv.Shutdown(ctx)
+	s.stopFind()
 	s.closer()
 	logf("Stopped sharing")
 }
