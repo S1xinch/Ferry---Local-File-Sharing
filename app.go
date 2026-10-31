@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -26,11 +27,22 @@ const (
 )
 
 type settings struct {
-	Mode     string `json:"mode"`
-	Folder   string `json:"folder"`
-	Target   int    `json:"target"`
-	Uploads  bool   `json:"uploads"`
-	Internet bool   `json:"internet"`
+	Mode         string `json:"mode"`
+	Folder       string `json:"folder"`
+	Target       int    `json:"target"`
+	Uploads      bool   `json:"uploads"`
+	Internet     bool   `json:"internet"`
+	KeepPIN      bool   `json:"keepPin"`      // reuse the same PIN when sharing starts again
+	PIN          string `json:"pin"`          // saved only while KeepPIN is on
+	Server       string `json:"server"`       // receive mode: the other computer's address
+	MirrorFolder string `json:"mirrorFolder"` // receive mode: the folder kept up to date
+}
+
+// startRequest is what the app window sends with Start. The receive PIN is
+// used once to log in and is never saved.
+type startRequest struct {
+	settings
+	ReceivePIN string `json:"receivePin"`
 }
 
 type app struct {
@@ -45,6 +57,7 @@ type app struct {
 	lastSeen time.Time
 	settings settings
 	update   updateState
+	mir      *mirror // set while receiving from another computer
 	staged   *stagedUpdate
 	relaunch string // set when an update is installed; started after this copy closes
 }
@@ -108,6 +121,9 @@ func runApp() (string, error) {
 		a.cur.stop()
 	}
 	relaunch := a.relaunch
+	if a.mir != nil {
+		a.mir.stop()
+	}
 	a.mu.Unlock()
 	// The deferred cleanup (port, token file) runs before main starts the new copy.
 	return relaunch, nil
@@ -131,7 +147,7 @@ func panelAlive(port int) bool {
 func (a *app) idleWatch() {
 	for range time.Tick(10 * time.Second) {
 		a.mu.Lock()
-		idle := a.cur == nil && time.Since(a.lastSeen) > idleQuit
+		idle := a.cur == nil && a.mir == nil && time.Since(a.lastSeen) > idleQuit
 		a.mu.Unlock()
 		if idle {
 			a.stopApp()
@@ -162,6 +178,7 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /api/pick", a.api(a.pick))
 	mux.HandleFunc("POST /api/start", a.api(a.start))
 	mux.HandleFunc("POST /api/stop", a.api(a.stop))
+	mux.HandleFunc("POST /api/mirror/stop", a.api(a.stopMirror))
 	mux.HandleFunc("POST /api/quit", a.api(a.quitHandler))
 	mux.HandleFunc("POST /api/update", a.api(a.updateNow))
 	return a.guard(mux)
@@ -238,14 +255,15 @@ type link struct {
 }
 
 type state struct {
-	Running        bool        `json:"running"`
-	Settings       settings    `json:"settings"`
-	What           string      `json:"what"`
-	PIN            string      `json:"pin"`
-	Links          []link      `json:"links"`
-	InternetStatus string      `json:"internetStatus"`
-	Activity       []string    `json:"activity"`
-	Update         updateState `json:"update"`
+	Running        bool          `json:"running"`
+	Settings       settings      `json:"settings"`
+	What           string        `json:"what"`
+	PIN            string        `json:"pin"`
+	Links          []link        `json:"links"`
+	InternetStatus string        `json:"internetStatus"`
+	Activity       []string      `json:"activity"`
+	Update         updateState   `json:"update"`
+	Mirror         *mirrorStatus `json:"mirror,omitempty"`
 }
 
 func qrDataURL(text string) string {
@@ -259,6 +277,10 @@ func qrDataURL(text string) string {
 func (a *app) state(r *http.Request) (any, error) {
 	a.mu.Lock()
 	s, st := a.cur, state{Settings: a.settings, Activity: recentActivity(30), Update: a.update}
+	if a.mir != nil {
+		snap := a.mir.snapshot()
+		st.Mirror = &snap
+	}
 	a.mu.Unlock()
 	if s == nil {
 		return st, nil
@@ -286,17 +308,25 @@ func (a *app) pick(r *http.Request) (any, error) {
 }
 
 func (a *app) start(r *http.Request) (any, error) {
-	var in settings
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+	var req startRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
 		return nil, errors.New("bad request")
 	}
+	in := req.settings
 	in.Folder = strings.Trim(strings.TrimSpace(in.Folder), `"'`)
+	in.MirrorFolder = strings.Trim(strings.TrimSpace(in.MirrorFolder), `"'`)
+	in.Server = strings.TrimSpace(in.Server)
+	if in.Mode == "receive" {
+		return a.startReceive(in, strings.TrimSpace(req.ReceivePIN))
+	}
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cur != nil {
 		return nil, errors.New("already sharing")
 	}
+	// Keep the receive settings when sharing.
+	in.Server, in.MirrorFolder, in.PIN = a.settings.Server, a.settings.MirrorFolder, ""
 	cfg := config{mode: in.Mode, internet: in.Internet, readOnly: !in.Uploads}
 	switch in.Mode {
 	case "files":
@@ -304,6 +334,9 @@ func (a *app) start(r *http.Request) (any, error) {
 			return nil, errors.New("choose a folder to share first")
 		}
 		cfg.folder = in.Folder
+		if in.KeepPIN && a.settings.PIN != "" {
+			cfg.pin = a.settings.PIN
+		}
 	case "site":
 		if in.Target == a.port {
 			return nil, errors.New("that port is Ferry itself, pick your website's port")
@@ -316,10 +349,57 @@ func (a *app) start(r *http.Request) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if in.KeepPIN {
+		in.PIN = s.cfg.pin
+	}
 	a.cur, a.settings = s, in
 	a.saveSettings()
 	if in.Internet {
 		go s.startInternet()
+	}
+	return map[string]bool{"ok": true}, nil
+}
+
+// startReceive logs in to another computer and starts keeping the folder up to date.
+func (a *app) startReceive(in settings, pin string) (any, error) {
+	if in.Server == "" {
+		return nil, errors.New("type the address of the other computer first")
+	}
+	if pin == "" {
+		return nil, errors.New("type the PIN shown on the other computer")
+	}
+	if in.MirrorFolder == "" {
+		return nil, errors.New("choose the folder to keep up to date")
+	}
+	if err := os.MkdirAll(in.MirrorFolder, 0o755); err != nil {
+		return nil, fmt.Errorf("cannot use that folder: %w", err)
+	}
+	m := newMirror(in.Server, pin, in.MirrorFolder)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := m.login(ctx); err != nil {
+		return nil, err
+	}
+
+	a.mu.Lock()
+	if a.mir != nil {
+		a.mir.stop()
+	}
+	a.mir = m
+	a.settings.Mode, a.settings.Server, a.settings.MirrorFolder = "receive", in.Server, in.MirrorFolder
+	a.saveSettings()
+	a.mu.Unlock()
+	m.start()
+	return map[string]bool{"ok": true}, nil
+}
+
+func (a *app) stopMirror(r *http.Request) (any, error) {
+	a.mu.Lock()
+	m := a.mir
+	a.mir = nil
+	a.mu.Unlock()
+	if m != nil {
+		m.stop()
 	}
 	return map[string]bool{"ok": true}, nil
 }
