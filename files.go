@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -90,6 +91,10 @@ func (s *fileShare) serveGet(w http.ResponseWriter, r *http.Request, p string) {
 	}
 	if r.URL.Query().Has("zip") {
 		s.zipFolder(w, p)
+		return
+	}
+	if r.URL.Query().Has("manifest") && p == "." {
+		s.manifest(w)
 		return
 	}
 
@@ -271,6 +276,25 @@ func (s *fileShare) zipFolder(w http.ResponseWriter, p string) {
 		_, err = io.Copy(dst, src)
 		return err
 	})
+}
+
+// manifest lists every file in the shared folder, so another Ferry can keep a
+// copy up to date. Links and other special files are left out.
+func (s *fileShare) manifest(w http.ResponseWriter) {
+	list := []manifestEntry{}
+	fs.WalkDir(s.root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !d.Type().IsRegular() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		list = append(list, manifestEntry{Path: p, Size: info.Size(), Mtime: info.ModTime().Unix()})
+		return nil
+	})
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
 }
 
 func humanSize(n int64) string {

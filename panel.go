@@ -119,12 +119,14 @@ input[type=number]{width:140px}
 
 <section class="card" id="setup" hidden>
 <h2>What do you want to share?</h2>
-<div class="seg"><button type="button" data-mode="files">A folder</button><button type="button" data-mode="site">A website</button></div>
+<div class="seg"><button type="button" data-mode="files">A folder</button><button type="button" data-mode="site">A website</button><button type="button" data-mode="receive">From another computer</button></div>
 
 <div id="files-opts">
 <label class="field" for="folder">Folder</label>
 <div class="row"><input type="text" id="folder" placeholder="Choose a folder, or paste its path"><button type="button" class="btn plain" id="browse">Browse</button></div>
 <label class="check"><input type="checkbox" id="uploads"><span>Let visitors upload files into this folder</span></label>
+<label class="check"><input type="checkbox" id="keeppin"><span>Keep the same PIN when sharing starts again
+<span class="hint" style="display:block">Needed if another computer keeps a copy of this folder up to date.</span></span></label>
 </div>
 
 <div id="site-opts" hidden>
@@ -133,11 +135,27 @@ input[type=number]{width:140px}
 <p class="hint">Start the website on this computer first. Common ports: 3000, 5173, 8000.</p>
 </div>
 
-<label class="check"><input type="checkbox" id="internet"><span>Also allow access from outside this Wi-Fi
+<div id="receive-opts" hidden>
+<label class="field" for="server">Address of the other computer</label>
+<input type="text" id="server" placeholder="For example 100.64.0.5:8080" autocomplete="off">
+<p class="hint">Use the Tailscale address shown on the other computer, with the port Ferry shows there. Both computers need Ferry and Tailscale.</p>
+<label class="field" for="rfolder">Folder to keep up to date</label>
+<div class="row"><input type="text" id="rfolder" placeholder="Choose a folder, or paste its path"><button type="button" class="btn plain" id="rbrowse">Browse</button></div>
+<label class="field" for="rpin">PIN from the other computer</label>
+<input type="text" id="rpin" inputmode="numeric" autocomplete="off" maxlength="12" style="width:160px">
+<p class="hint">Files in this folder are kept the same as on the other computer, so changes you make to them here are overwritten. Files removed there move to a folder called .ferry-removed here. Files you put in this folder yourself are left alone.</p>
+</div>
+
+<label class="check" id="internet-opt"><input type="checkbox" id="internet"><span>Also allow access from outside this Wi-Fi
 <span class="hint" style="display:block">Gives a free link that works anywhere. Visitors still need the PIN.</span></span></label>
 
 <p class="error" id="err" hidden></p>
 <div class="actions"><button type="button" id="start">Start sharing</button></div>
+</section>
+
+<section class="card" id="mirror-live" hidden>
+<div class="top"><div><div class="label">Receiving from</div><p class="what" id="mirror-what"></p><p class="hint" id="mirror-status"></p></div>
+<button type="button" class="btn plain" id="mirror-stop">Stop receiving</button></div>
 </section>
 
 <section class="card" id="live" hidden>
@@ -172,24 +190,32 @@ function setMode(m) {
   document.querySelectorAll(".seg button").forEach(function (b) { b.classList.toggle("on", b.dataset.mode === m); });
   $("files-opts").hidden = m !== "files";
   $("site-opts").hidden = m !== "site";
+  $("receive-opts").hidden = m !== "receive";
+  $("internet-opt").hidden = m === "receive";
+  $("start").textContent = m === "receive" ? "Start receiving" : "Start sharing";
 }
 document.querySelectorAll(".seg button").forEach(function (b) { b.onclick = function () { setMode(b.dataset.mode); }; });
 
 function showError(msg) { msg = msg ? msg.charAt(0).toUpperCase() + msg.slice(1) : ""; $("err").textContent = msg; $("err").hidden = !msg; }
 
-$("browse").onclick = function () {
-  $("browse").disabled = true;
-  call("/api/pick", {}).then(function (r) { if (r.folder) $("folder").value = r.folder; })
+function browseInto(button, input) {
+  button.disabled = true;
+  call("/api/pick", {}).then(function (r) { if (r.folder) input.value = r.folder; })
     .catch(function (e) { showError(e.message); })
-    .finally(function () { $("browse").disabled = false; });
-};
+    .finally(function () { button.disabled = false; });
+}
+$("browse").onclick = function () { browseInto($("browse"), $("folder")); };
+$("rbrowse").onclick = function () { browseInto($("rbrowse"), $("rfolder")); };
+
+$("mirror-stop").onclick = function () { call("/api/mirror/stop", {}).then(refresh); };
 
 $("start").onclick = function () {
   showError("");
   $("start").disabled = true;
   call("/api/start", {
     mode: mode, folder: $("folder").value, target: parseInt($("target").value, 10) || 0,
-    uploads: $("uploads").checked, internet: $("internet").checked
+    uploads: $("uploads").checked, internet: $("internet").checked, keepPin: $("keeppin").checked,
+    server: $("server").value, mirrorFolder: $("rfolder").value, receivePin: $("rpin").value
   }).then(refresh).catch(function (e) { showError(e.message); })
     .finally(function () { $("start").disabled = false; });
 };
@@ -239,6 +265,14 @@ function render(s) {
   running = s.running;
   $("setup").hidden = s.running;
   $("live").hidden = !s.running;
+  var mr = s.mirror;
+  $("mirror-live").hidden = !mr;
+  if (mr) {
+    $("mirror-what").textContent = mr.server + " into " + mr.folder;
+    $("mirror-status").textContent = mr.lastError ? "Waiting to reconnect: " + mr.lastError
+      : mr.lastSync ? "Last checked " + mr.lastSync + ". " + mr.files + " files there, " + mr.changed + " updated and " + mr.removed + " moved to the trash at the last check."
+      : "Connecting...";
+  }
   var u = s.update || {};
   $("update").hidden = !u.ready;
   if (u.ready) $("update-text").textContent = "Ferry " + u.version + " is downloaded. Restart Ferry to switch to it. Your settings are kept.";
@@ -249,6 +283,9 @@ function render(s) {
     $("target").value = st.target || 3000;
     $("uploads").checked = !!st.uploads;
     $("internet").checked = !!st.internet;
+    $("keeppin").checked = !!st.keepPin;
+    $("server").value = st.server || "";
+    $("rfolder").value = st.mirrorFolder || "";
     formFilled = true;
   }
   if (s.running) {
