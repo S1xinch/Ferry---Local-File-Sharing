@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -21,6 +22,61 @@ func openBrowser(url string) error {
 	}
 	hideWindow(cmd)
 	return cmd.Start()
+}
+
+// openWindow shows the app window. It opens Chrome or Edge in app mode, which
+// is a window with no tabs or address bar, so Ferry looks like its own app.
+// If neither is installed it falls back to the default browser.
+func openWindow(url string) error {
+	if exe, ok := appBrowser(); ok {
+		cmd := exec.Command(exe,
+			"--app="+url,
+			"--user-data-dir="+filepath.Join(configDir(), "window"), // its own profile, so it never mixes with your browsing
+			"--no-first-run",
+			"--window-size=920,840",
+		)
+		hideWindow(cmd)
+		if err := cmd.Start(); err == nil {
+			return nil
+		}
+	}
+	return openBrowser(url)
+}
+
+// appBrowser finds a Chromium browser that can open an app window.
+func appBrowser() (string, bool) {
+	var candidates []string
+	switch runtime.GOOS {
+	case "windows":
+		for _, c := range []struct{ env, rel string }{
+			{"ProgramFiles(x86)", `Microsoft\Edge\Application\msedge.exe`},
+			{"ProgramFiles", `Microsoft\Edge\Application\msedge.exe`},
+			{"ProgramFiles", `Google\Chrome\Application\chrome.exe`},
+			{"ProgramFiles(x86)", `Google\Chrome\Application\chrome.exe`},
+			{"LOCALAPPDATA", `Google\Chrome\Application\chrome.exe`},
+		} {
+			if base := os.Getenv(c.env); base != "" {
+				candidates = append(candidates, filepath.Join(base, c.rel))
+			}
+		}
+	case "darwin":
+		candidates = []string{
+			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+		}
+	default:
+		for _, n := range []string{"google-chrome", "chromium", "chromium-browser", "microsoft-edge"} {
+			if p, err := exec.LookPath(n); err == nil {
+				candidates = append(candidates, p)
+			}
+		}
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c, true
+		}
+	}
+	return "", false
 }
 
 // pickFolder shows the system's folder chooser. An empty result means

@@ -83,7 +83,7 @@ func runApp() (string, error) {
 	if err != nil {
 		// Already running: just show its window again.
 		if tok, e := os.ReadFile(tokenFile); e == nil && panelAlive(panelPort) {
-			return "", openBrowser(panelURL(panelPort, strings.TrimSpace(string(tok))))
+			return "", openWindow(panelURL(panelPort, strings.TrimSpace(string(tok))))
 		}
 		if ln, err = net.Listen("tcp", "127.0.0.1:0"); err != nil {
 			return "", err
@@ -109,7 +109,7 @@ func runApp() (string, error) {
 	go srv.Serve(ln)
 	defer srv.Close()
 
-	if err := openBrowser(panelURL(a.port, a.token)); err != nil {
+	if err := openWindow(panelURL(a.port, a.token)); err != nil {
 		return "", fmt.Errorf("could not open your browser: %w", err)
 	}
 	go a.idleWatch()
