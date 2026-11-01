@@ -60,8 +60,8 @@ func appBrowser() (string, bool) {
 			}
 		}
 	case "darwin":
+		// Edge only: Chrome is not used on Mac. Without Edge, the default browser opens.
 		candidates = []string{
-			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
 		}
 	default:
