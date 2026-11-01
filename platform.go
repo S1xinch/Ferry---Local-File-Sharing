@@ -60,10 +60,8 @@ func appBrowser() (string, bool) {
 			}
 		}
 	case "darwin":
-		// Edge only: Chrome is not used on Mac. Without Edge, the default browser opens.
-		candidates = []string{
-			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-		}
+		// Mac opens Ferry in the default browser, as before. The app window is for Windows.
+		return "", false
 	default:
 		for _, n := range []string{"google-chrome", "chromium", "chromium-browser", "microsoft-edge"} {
 			if p, err := exec.LookPath(n); err == nil {
