@@ -35,7 +35,8 @@ func openWindow(url string) error {
 			"--no-first-run",
 			"--window-size=920,840",
 		)
-		hideWindow(cmd)
+		// No hideWindow here: on Windows it starts the browser hidden, which
+		// leaves an empty white frame instead of the page.
 		if err := cmd.Start(); err == nil {
 			return nil
 		}
