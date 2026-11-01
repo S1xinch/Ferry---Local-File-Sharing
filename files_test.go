@@ -18,6 +18,9 @@ func TestListShowsPreviews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Close the folder before the test removes it; Windows refuses to delete
+	// a folder that is still open.
+	t.Cleanup(func() { fsh.root.Close() })
 	rec := httptest.NewRecorder()
 	fsh.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	body := rec.Body.String()
