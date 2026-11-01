@@ -102,6 +102,9 @@ func TestCheckDownloadRejectsNonPrograms(t *testing.T) {
 }
 
 func TestMacBundle(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Mac paths use forward slashes")
+	}
 	cases := []struct {
 		exe     string
 		bundle  string
