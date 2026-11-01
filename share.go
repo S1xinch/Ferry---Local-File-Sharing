@@ -63,7 +63,7 @@ func startShare(cfg config) (*share, error) {
 	}
 	s.port = ln.Addr().(*net.TCPAddr).Port
 	s.stopFind = func() {}
-	if cfg.mode == "files" {
+	if cfg.mode == "files" && !cfg.hidden {
 		s.stopFind = answerDiscovery(s.what, s.port)
 	}
 

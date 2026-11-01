@@ -25,6 +25,7 @@ type config struct {
 	pin      string
 	internet bool
 	readOnly bool
+	hidden   bool // do not answer "who is sharing?" on the Wi-Fi
 }
 
 func main() {

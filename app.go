@@ -36,6 +36,15 @@ type settings struct {
 	PIN          string `json:"pin"`          // saved only while KeepPIN is on
 	Server       string `json:"server"`       // receive mode: the other computer's address
 	MirrorFolder string `json:"mirrorFolder"` // receive mode: the folder kept up to date
+	Prefs        prefs  `json:"prefs"`        // set on the Settings page
+}
+
+// prefs are the choices on the Settings page. They are kept when sharing
+// starts, unlike the rest of settings which come from the sharing form.
+type prefs struct {
+	AutoUpdate bool `json:"autoUpdate"` // check for updates on open and every few hours
+	Hidden     bool `json:"hidden"`     // do not answer "who is sharing?" on the Wi-Fi
+	Port       int  `json:"port"`       // port to share on, 0 for automatic
 }
 
 // startRequest is what the app window sends with Start. The receive PIN is
@@ -96,7 +105,7 @@ func runApp() (string, error) {
 		dir:      dir,
 		quit:     make(chan struct{}),
 		lastSeen: time.Now(),
-		settings: settings{Mode: "files", Target: 3000, Uploads: true},
+		settings: settings{Mode: "files", Target: 3000, Uploads: true, Prefs: prefs{AutoUpdate: true}},
 	}
 	a.loadSettings()
 	cleanupUpdateLeftovers()
@@ -113,7 +122,7 @@ func runApp() (string, error) {
 		return "", fmt.Errorf("could not open your browser: %w", err)
 	}
 	go a.idleWatch()
-	go a.checkForUpdate()
+	go a.updateLoop()
 	<-a.quit
 
 	a.mu.Lock()
@@ -182,6 +191,8 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /api/discover", a.api(a.discover))
 	mux.HandleFunc("POST /api/quit", a.api(a.quitHandler))
 	mux.HandleFunc("POST /api/update", a.api(a.updateNow))
+	mux.HandleFunc("POST /api/update/check", a.api(a.checkNow))
+	mux.HandleFunc("POST /api/prefs", a.api(a.savePrefs))
 	return a.guard(mux)
 }
 
@@ -326,9 +337,10 @@ func (a *app) start(r *http.Request) (any, error) {
 	if a.cur != nil {
 		return nil, errors.New("already sharing")
 	}
-	// Keep the receive settings when sharing.
-	in.Server, in.MirrorFolder, in.PIN = a.settings.Server, a.settings.MirrorFolder, ""
-	cfg := config{mode: in.Mode, internet: in.Internet, readOnly: !in.Uploads}
+	// Keep the receive settings and the Settings page choices when sharing.
+	in.Server, in.MirrorFolder, in.PIN, in.Prefs = a.settings.Server, a.settings.MirrorFolder, "", a.settings.Prefs
+	cfg := config{mode: in.Mode, internet: in.Internet, readOnly: !in.Uploads,
+		port: in.Prefs.Port, hidden: in.Prefs.Hidden}
 	switch in.Mode {
 	case "files":
 		if in.Folder == "" {
@@ -421,5 +433,25 @@ func (a *app) quitHandler(r *http.Request) (any, error) {
 		time.Sleep(200 * time.Millisecond)
 		a.stopApp()
 	}()
+	return map[string]bool{"ok": true}, nil
+}
+
+// savePrefs stores the Settings page. A new port is used the next time
+// sharing starts.
+func (a *app) savePrefs(r *http.Request) (any, error) {
+	var p prefs
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&p); err != nil {
+		return nil, errors.New("bad request")
+	}
+	if p.Port != 0 && (p.Port < 1024 || p.Port > 65535) {
+		return nil, errors.New("the port must be between 1024 and 65535, or empty for automatic")
+	}
+	if p.Port != 0 && p.Port == a.port {
+		return nil, errors.New("that port is used by Ferry itself, pick another one")
+	}
+	a.mu.Lock()
+	a.settings.Prefs = p
+	a.saveSettings()
+	a.mu.Unlock()
 	return map[string]bool{"ok": true}, nil
 }
