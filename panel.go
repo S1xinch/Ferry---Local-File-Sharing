@@ -216,7 +216,7 @@ $("find").onclick = function () {
     var box = $("found");
     box.textContent = "";
     if (!r.computers || !r.computers.length) {
-      box.textContent = "No Ferry computers answered. Check that both are on the same Wi-Fi and that the other one is sharing a folder.";
+      box.textContent = "No Ferry computers answered. Check that both are on the same Wi-Fi, that the other one is sharing a folder, and that its firewall lets Ferry in. You can also type the address shown on the other computer.";
       return;
     }
     r.computers.forEach(function (c) {

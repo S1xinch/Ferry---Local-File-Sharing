@@ -23,6 +23,9 @@
 	<!-- Ferry has no Dock icon: its window opens in the browser. Opening the app again brings the window back. -->
 	<key>LSUIElement</key>
 	<true/>
+	<!-- Shown when macOS asks to let Ferry find and reach other computers on the same Wi-Fi. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Ferry uses your local network to find other computers running Ferry and to share files with them.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>LSApplicationCategoryType</key>
