@@ -100,3 +100,21 @@ func TestCheckDownloadRejectsNonPrograms(t *testing.T) {
 		t.Fatal("an HTML page must not pass as a Windows program")
 	}
 }
+
+func TestMacBundle(t *testing.T) {
+	cases := []struct {
+		exe     string
+		bundle  string
+		problem bool
+	}{
+		{"/Applications/Ferry.app/Contents/MacOS/ferry", "/Applications/Ferry.app", false},
+		{"/private/var/folders/x/T/AppTranslocation/ABC/d/Ferry.app/Contents/MacOS/ferry", "", true},
+		{"/usr/local/bin/ferry", "", true},
+	}
+	for _, c := range cases {
+		b, why := macBundle(c.exe)
+		if b != c.bundle || (why != "") != c.problem {
+			t.Errorf("%s: got %q %q", c.exe, b, why)
+		}
+	}
+}

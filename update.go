@@ -26,9 +26,14 @@ const (
 
 // updateState is what the app window shows about updates.
 type updateState struct {
-	Version string `json:"version,omitempty"` // the newer version, e.g. "v0.1.2"
-	Ready   bool   `json:"ready"`             // downloaded and waiting for a restart
+	Version  string `json:"version,omitempty"` // the newer version, e.g. "v0.1.2"
+	Ready    bool   `json:"ready"`             // downloaded and waiting for a restart
+	Checking bool   `json:"checking"`          // a check or download is running
+	Status   string `json:"status,omitempty"`  // what the last check found, for the Settings page
 }
+
+// updateEvery is how often a running Ferry looks for a new version.
+const updateEvery = 6 * time.Hour
 
 // stagedUpdate is a checked new version, ready to be swapped in.
 type stagedUpdate struct {
@@ -113,16 +118,66 @@ func fetchLatest() (release, error) {
 	return r, err
 }
 
-// checkForUpdate runs once when the app opens. If a newer release exists it
-// downloads it in the background; nothing is replaced until the person
-// clicks "Restart to update". Offline or failing quietly is fine: it tries
-// again next time the app opens.
+// updateLoop checks for updates when the app opens and every few hours while
+// it runs, as long as automatic checks are on in Settings.
+func (a *app) updateLoop() {
+	for {
+		a.mu.Lock()
+		auto := a.settings.Prefs.AutoUpdate
+		a.mu.Unlock()
+		if auto {
+			a.checkForUpdate()
+		}
+		time.Sleep(updateEvery)
+	}
+}
+
+// checkNow is the "Check for updates" button. The result shows up in the
+// app window's state a moment later.
+func (a *app) checkNow(r *http.Request) (any, error) {
+	go a.checkForUpdate()
+	return map[string]bool{"ok": true}, nil
+}
+
+// setUpdate changes the update state shown in the app window.
+func (a *app) setUpdate(change func(u *updateState)) {
+	a.mu.Lock()
+	change(&a.update)
+	a.mu.Unlock()
+}
+
+// checkForUpdate looks for a newer release. If there is one it downloads it in
+// the background; nothing is replaced until the person clicks "Restart to
+// update". Failing is fine: the next check tries again.
 func (a *app) checkForUpdate() {
+	a.mu.Lock()
+	if a.update.Checking || a.staged != nil {
+		a.mu.Unlock()
+		return
+	}
+	a.update.Checking = true
+	a.update.Status = "Checking..."
+	a.mu.Unlock()
+	done := func(status string) {
+		a.setUpdate(func(u *updateState) { u.Checking, u.Status = false, status })
+	}
+
 	if version == "dev" {
+		done("This is a development copy of Ferry, so it does not update itself.")
 		return
 	}
 	rel, err := fetchLatest()
-	if err != nil || !newer(rel.Tag, version) {
+	if err != nil {
+		done("Could not reach GitHub to check. Try again later.")
+		return
+	}
+	checked := " Last checked at " + time.Now().Format("15:04") + "."
+	if !newer(rel.Tag, version) {
+		done("You have the latest version." + checked)
+		return
+	}
+	if why := selfUpdateProblem(); why != "" {
+		done("Ferry " + rel.Tag + " is out, but this copy cannot update itself. " + why)
 		return
 	}
 	want := assetFor(runtime.GOOS, runtime.GOARCH)
@@ -133,16 +188,20 @@ func (a *app) checkForUpdate() {
 		}
 	}
 	if url == "" {
+		done("Ferry " + rel.Tag + " is out, but the download for this computer is not ready yet. Check again in a few minutes." + checked)
 		return
 	}
+	a.setUpdate(func(u *updateState) { u.Status = "Downloading Ferry " + rel.Tag + "..." })
 	path, err := downloadUpdate(url, want)
 	if err != nil {
 		logf("Update to %s could not be downloaded: %v", rel.Tag, err)
+		done("Ferry " + rel.Tag + " could not be downloaded. Try again later.")
 		return
 	}
 	a.mu.Lock()
 	a.staged = &stagedUpdate{version: rel.Tag, path: path}
-	a.update = updateState{Version: rel.Tag, Ready: true}
+	a.update = updateState{Version: rel.Tag, Ready: true,
+		Status: "Ferry " + rel.Tag + " is downloaded. Restart Ferry to switch to it."}
 	a.mu.Unlock()
 	logf("Ferry %s is downloaded and ready to install", rel.Tag)
 }
@@ -281,6 +340,51 @@ func writeZipFile(f *zip.File, target string) error {
 	return err
 }
 
+// selfUpdateProblem says why this copy of Ferry cannot replace itself, or ""
+// if it can. Checking first means people get a clear reason instead of an
+// update that downloads and then fails to install.
+func selfUpdateProblem() string {
+	self, err := os.Executable()
+	if err == nil {
+		self, err = filepath.EvalSymlinks(self)
+	}
+	if err != nil {
+		return "Download the new version from GitHub instead."
+	}
+	place := filepath.Dir(self)
+	if runtime.GOOS == "darwin" {
+		bundle, why := macBundle(self)
+		if why != "" {
+			return why
+		}
+		place = filepath.Dir(bundle)
+	}
+	f, err := os.CreateTemp(place, ".ferry-write-test-*")
+	if err != nil {
+		if runtime.GOOS == "darwin" {
+			return "Ferry is not allowed to change the folder it is in. Move Ferry into your Applications folder and open it from there."
+		}
+		return "Ferry is not allowed to change the folder it is in. Move it to a folder you own, like Downloads or Documents."
+	}
+	f.Close()
+	os.Remove(f.Name())
+	return ""
+}
+
+// macBundle finds the Ferry.app that holds the running program. macOS runs
+// apps opened straight from a download out of a temporary read-only copy
+// ("App Translocation"), which can never be updated in place.
+func macBundle(self string) (bundle, why string) {
+	bundle = filepath.Dir(filepath.Dir(filepath.Dir(self)))
+	if filepath.Ext(bundle) != ".app" {
+		return "", "This copy of Ferry is not the Mac app. Download the new version from GitHub instead."
+	}
+	if strings.Contains(bundle, "/AppTranslocation/") {
+		return "", "macOS is running it from a temporary read-only copy. Move Ferry into your Applications folder, then open it from there."
+	}
+	return bundle, ""
+}
+
 // installUpdate puts the staged version in place and returns what to start
 // once this copy of Ferry has closed.
 func (a *app) installUpdate() (string, error) {
@@ -300,9 +404,9 @@ func (a *app) installUpdate() (string, error) {
 
 	target := self
 	if runtime.GOOS == "darwin" {
-		bundle := filepath.Dir(filepath.Dir(filepath.Dir(self)))
-		if filepath.Ext(bundle) != ".app" {
-			return "", errors.New("this copy of Ferry is not the Mac app, so it cannot update itself")
+		bundle, why := macBundle(self)
+		if why != "" {
+			return "", errors.New(why)
 		}
 		err = swapBundle(bundle, st.path)
 		target = bundle
@@ -310,7 +414,7 @@ func (a *app) installUpdate() (string, error) {
 		err = swapBinary(self, st.path)
 	}
 	if err != nil {
-		return "", fmt.Errorf("could not replace Ferry, move it to a folder you own and try again: %w", err)
+		return "", fmt.Errorf("could not replace Ferry, move it into your Applications folder (or a folder you own) and try again: %w", err)
 	}
 	a.mu.Lock()
 	a.staged = nil
@@ -360,7 +464,8 @@ func swapBundle(bundle, newApp string) error {
 		os.Rename(old, bundle)
 		return err
 	}
-	os.RemoveAll(old)
+	// The old copy is still running from Ferry.app.old, so it is removed the
+	// next time Ferry opens rather than now.
 	return nil
 }
 
@@ -421,6 +526,8 @@ func startProgram(target string) {
 func (a *app) updateNow(r *http.Request) (any, error) {
 	target, err := a.installUpdate()
 	if err != nil {
+		logf("Update could not be installed: %v", err)
+		a.setUpdate(func(u *updateState) { u.Status = "The update could not be installed: " + err.Error() })
 		return nil, err
 	}
 	a.mu.Lock()

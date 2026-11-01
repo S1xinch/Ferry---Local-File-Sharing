@@ -77,6 +77,13 @@ input[type=number]{width:140px}
 #update{border-color:var(--accent)}
 #update .top{align-items:center}
 .label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+main.in-settings>section:not(#settings),main.in-settings>.page-hint{display:none!important}
+#settings h2{margin:0}
+#settings .group{border-top:1px solid var(--line);margin-top:20px;padding-top:18px}
+#settings .top+.group{border-top:0;margin-top:14px;padding-top:0}
+#check-status{margin:0}
+#port{width:160px}
+#prefs-saved{font-size:13px;color:var(--muted)}
 </style></head><body>
 <div id="intro" aria-hidden="true" title="Click to skip">
 <svg viewBox="0 0 420 190">
@@ -108,6 +115,7 @@ input[type=number]{width:140px}
 </div>
 <main>
 <header><div class="logo">F</div><h1>Ferry</h1><span class="muted">{{.Version}}</span><span class="grow"></span>
+<button class="btn plain small" id="open-settings">Settings</button>
 <button class="btn plain small" id="quit">Quit Ferry</button></header>
 
 <div class="card" id="closed">Ferry has closed. Open the app again to keep sharing.</div>
@@ -170,8 +178,37 @@ input[type=number]{width:140px}
 <p class="hint" style="margin-top:16px">Scanning a code logs in without typing the PIN, so only show codes to people you trust. Keep this computer awake while sharing.</p>
 </section>
 
+<section class="card" id="settings" hidden>
+<div class="top"><h2>Settings</h2><span id="prefs-saved"></span><button type="button" class="btn plain small" id="close-settings">Done</button></div>
+
+<div class="group">
+<div class="label">Updates</div>
+<p class="what">This is Ferry {{.Version}}.</p>
+<div class="actions"><button type="button" id="check">Check for updates</button>
+<button type="button" id="check-install" style="display:none">Restart to update</button></div>
+<p class="hint" id="check-status"></p>
+<label class="check"><input type="checkbox" id="autoupdate"><span>Check for updates automatically
+<span class="hint" style="display:block">When Ferry opens and every 6 hours while it runs. Nothing is installed until you choose to restart.</span></span></label>
+</div>
+
+<div class="group">
+<div class="label">Network</div>
+<label class="check"><input type="checkbox" id="findable"><span>Let other computers on this Wi-Fi find this one
+<span class="hint" style="display:block">Only while you share a folder. They still need the PIN to open it.</span></span></label>
+<label class="field" for="port">Sharing port</label>
+<input type="number" id="port" min="1024" max="65535" placeholder="Automatic">
+<p class="hint">Leave empty to pick one automatically. Set a port if you want the address for this computer to stay the same each time. Used the next time sharing starts.</p>
+<p class="error" id="prefs-err" hidden></p>
+</div>
+
+<div class="group">
+<div class="label">About</div>
+<p class="hint">Ferry keeps its settings on this computer only. <a href="https://github.com/S1xinch/Ferry---Local-File-Sharing/releases" target="_blank" rel="noopener">See what changed in each version</a>.</p>
+</div>
+</section>
+
 <section class="card"><h2>Activity</h2><ul id="log"></ul></section>
-<p class="hint">You can close this tab. Sharing keeps going until you stop it, and opening Ferry again brings this window back.</p>
+<p class="hint page-hint">You can close this tab. Sharing keeps going until you stop it, and opening Ferry again brings this window back.</p>
 </main>
 <script>
 var $ = function (id) { return document.getElementById(id); };
@@ -256,9 +293,67 @@ $("update-go").onclick = function () {
     $("closed").style.display = "block";
   }).catch(function (e) {
     $("update-go").disabled = false;
-    $("update-text").textContent = e.message;
+    // A network error here means Ferry closed partway through.
+    var msg = e instanceof TypeError
+      ? "Ferry closed while updating. Open Ferry again. If it still shows the old version, download the new one from GitHub."
+      : e.message.charAt(0).toUpperCase() + e.message.slice(1);
+    $("update-text").textContent = msg;
+    $("check-status").textContent = msg;
   });
 };
+
+var prefsFilled = false, savedTimer = null;
+function showSettings(on) {
+  document.querySelector("main").classList.toggle("in-settings", on);
+  $("settings").hidden = !on;
+  window.scrollTo(0, 0);
+}
+$("open-settings").onclick = function () { showSettings(true); };
+$("close-settings").onclick = function () { showSettings(false); };
+
+$("check").onclick = function () {
+  $("check").disabled = true;
+  $("check-status").textContent = "Checking...";
+  call("/api/update/check", {}).then(refresh).catch(function (e) {
+    $("check").disabled = false;
+    $("check-status").textContent = e.message;
+  });
+};
+$("check-install").onclick = function () { $("update-go").onclick(); };
+
+function savePrefs() {
+  $("prefs-err").hidden = true;
+  var port = $("port").value.trim();
+  call("/api/prefs", {
+    autoUpdate: $("autoupdate").checked,
+    hidden: !$("findable").checked,
+    port: port ? parseInt(port, 10) || -1 : 0
+  }).then(function () {
+    $("prefs-saved").textContent = "Saved";
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(function () { $("prefs-saved").textContent = ""; }, 1500);
+  }).catch(function (e) {
+    $("prefs-err").textContent = e.message;
+    $("prefs-err").hidden = false;
+  });
+}
+$("autoupdate").onchange = savePrefs;
+$("findable").onchange = savePrefs;
+$("port").onchange = savePrefs;
+
+function renderSettings(s) {
+  var p = s.settings.prefs || {};
+  if (!prefsFilled) {
+    $("autoupdate").checked = !!p.autoUpdate;
+    $("findable").checked = !p.hidden;
+    $("port").value = p.port || "";
+    prefsFilled = true;
+  }
+  var u = s.update || {};
+  $("check").disabled = !!u.checking || !!u.ready;
+  $("check-install").style.display = u.ready ? "" : "none";
+  $("check-status").textContent = u.status || "";
+}
 
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
 
@@ -295,6 +390,7 @@ function render(s) {
       : mr.lastSync ? "Last checked " + mr.lastSync + ". " + mr.files + " files there, " + mr.changed + " updated and " + mr.removed + " moved to the trash at the last check."
       : "Connecting...";
   }
+  renderSettings(s);
   var u = s.update || {};
   $("update").hidden = !u.ready;
   if (u.ready) $("update-text").textContent = "Ferry " + u.version + " is downloaded. Restart Ferry to switch to it. Your settings are kept.";
