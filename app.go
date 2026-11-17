@@ -69,6 +69,10 @@ type app struct {
 	mir      *mirror // set while receiving from another computer
 	staged   *stagedUpdate
 	relaunch string // set when an update is installed; started after this copy closes
+
+	hubOnce    sync.Once
+	hub        *remoteHub                                        // the Transfer files page, see remote()
+	dialRemote func(remoteConfig, *trustStore) (remoteFS, error) // tests swap this out
 }
 
 func configDir() string {
@@ -134,6 +138,7 @@ func runApp() (string, error) {
 		a.mir.stop()
 	}
 	a.mu.Unlock()
+	a.remoteDisconnect(nil)
 	// The deferred cleanup (port, token file) runs before main starts the new copy.
 	return relaunch, nil
 }
@@ -158,6 +163,9 @@ func (a *app) idleWatch() {
 		a.mu.Lock()
 		idle := a.cur == nil && a.mir == nil && time.Since(a.lastSeen) > idleQuit
 		a.mu.Unlock()
+		if idle && a.remote().queue.busy() {
+			idle = false // keep going until transfers finish
+		}
 		if idle {
 			a.stopApp()
 			return
@@ -193,6 +201,18 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /api/update", a.api(a.updateNow))
 	mux.HandleFunc("POST /api/update/check", a.api(a.checkNow))
 	mux.HandleFunc("POST /api/prefs", a.api(a.savePrefs))
+	mux.HandleFunc("POST /api/remote/connect", a.api(a.remoteConnect))
+	mux.HandleFunc("POST /api/remote/disconnect", a.api(a.remoteDisconnect))
+	mux.HandleFunc("POST /api/remote/list", a.api(a.remoteList))
+	mux.HandleFunc("POST /api/remote/mkdir", a.api(a.remoteMkdir))
+	mux.HandleFunc("POST /api/remote/rename", a.api(a.remoteRename))
+	mux.HandleFunc("POST /api/remote/delete", a.api(a.remoteDelete))
+	mux.HandleFunc("POST /api/remote/forget", a.api(a.remoteForget))
+	mux.HandleFunc("POST /api/remote/untrust", a.api(a.untrust))
+	mux.HandleFunc("POST /api/local/list", a.api(a.localList))
+	mux.HandleFunc("POST /api/transfer", a.api(a.remoteTransfer))
+	mux.HandleFunc("POST /api/transfer/cancel", a.api(a.transferCancel))
+	mux.HandleFunc("POST /api/transfer/clear", a.api(a.transferClear))
 	return a.guard(mux)
 }
 
@@ -276,6 +296,7 @@ type state struct {
 	Activity       []string      `json:"activity"`
 	Update         updateState   `json:"update"`
 	Mirror         *mirrorStatus `json:"mirror,omitempty"`
+	Remote         remoteState   `json:"remote"`
 }
 
 func qrDataURL(text string) string {
@@ -289,6 +310,9 @@ func qrDataURL(text string) string {
 func (a *app) state(r *http.Request) (any, error) {
 	a.mu.Lock()
 	s, st := a.cur, state{Settings: a.settings, Activity: recentActivity(30), Update: a.update}
+	a.mu.Unlock()
+	st.Remote = a.remote().state()
+	a.mu.Lock()
 	if a.mir != nil {
 		snap := a.mir.snapshot()
 		st.Mirror = &snap

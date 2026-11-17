@@ -50,6 +50,18 @@ If you've got a site running on your computer, like a dev server on port 3000, F
 
 Tick **Also allow access from outside this Wi-Fi** and you get a second link that works on any network. It uses a free Cloudflare tunnel. The first time, Ferry downloads Cloudflare's official `cloudflared` program (about 40 MB) and keeps it for next time. The link changes every time you start sharing, and visitors still need the PIN.
 
+### Transferring files with a server (FTP and SFTP)
+
+Click **Transfer files** at the top of the window to connect to a server, like your website host, a NAS drive or a Raspberry Pi. It works like FileZilla: your computer's files on the left, the server's on the right.
+
+- Pick the kind of server: **SFTP**, **FTP over TLS**, **FTPS** (implicit) or plain **FTP**. Your host's control panel usually says which one to use. For SFTP you can leave the password empty to log in with your SSH key.
+- Select files and click **Upload to server** or **Download here**, or drag them from one side to the other. Whole folders work too.
+- Transfers run one after another in the list underneath, with progress, and you can cancel any of them. You can keep browsing while they run.
+- On the server side you can also make folders, rename and delete.
+- Your last 10 connections are listed under **Recent connections**, along with the folder you had open. Click one to fill in the details, then type the password. Passwords are never saved.
+
+The first time you connect to a server, Ferry shows its fingerprint and asks if you trust it, the same way FileZilla does. If that fingerprint ever changes, Ferry refuses to connect and tells you, because it can mean someone is pretending to be the server. If the server really was reinstalled, remove it under **Settings > Trusted servers** and connect again. Servers already in your `~/.ssh/known_hosts` are trusted automatically.
+
 ### Updates
 
 Each time Ferry opens, it checks GitHub for a newer release. If there is one, it downloads it in the background and the window shows an **Update ready** banner. Click **Restart to update** when it suits you. Ferry restarts on the new version, and your settings are kept. Sharing stops during the restart, so you'll need to start it again. If the check can't reach GitHub, Ferry just tries again next time.
@@ -62,10 +74,11 @@ Each time Ferry opens, it checks GitHub for a newer release. If there is one, it
 - The QR codes log people in without the PIN, so only show them to people you trust.
 - The Ferry window only opens on your own computer. Other devices can't control it.
 - On the same Wi-Fi the connection isn't encrypted, so someone else on that network could in theory see what's being sent. Stick to networks you trust. The anywhere link is encrypted (HTTPS).
+- On the Transfer files page, SFTP, FTP over TLS and FTPS are encrypted. Plain FTP sends everything, including your password, as readable text, so only use it on your own network.
 
 ## Where it keeps things
 
-Ferry remembers your last choices (folder, port, checkboxes) in a small settings file in your user config folder:
+Ferry remembers your last choices (folder, port, checkboxes), your recent server connections (without passwords) and the servers you chose to trust, in small files in your user config folder:
 
 - Windows: `%AppData%\ferry`
 - Mac: `~/Library/Application Support/ferry`
