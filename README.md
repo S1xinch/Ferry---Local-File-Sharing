@@ -4,7 +4,7 @@ Ferry lets you open a folder or a website from your computer on any other device
 
 I built it because every time I wanted to move a few files between my own devices, or show someone a site I was working on, I ended up reaching for a paid service or a cable.
 
-<p align="center"><img src="docs/app.png" width="640" alt="The Ferry window while sharing a folder, showing the PIN, link and QR code"></p>
+<p align="center"><img src="docs/app.png" width="720" alt="The Ferry window while sharing a folder: the folder's files on the left, and the PIN, link and QR code on the right"></p>
 
 ## Download
 
@@ -31,12 +31,12 @@ You only have to do that once. If macOS asks whether Ferry can accept incoming c
 
 ## Using it
 
-1. Open Ferry. A short animation plays and then its window opens in your browser.
-2. Choose **A folder** or **A website**.
+1. Open Ferry. A short animation plays and then its window opens.
+2. On the **Share** page, choose **A folder** or **A website**. When you pick a folder, the list shows exactly what visitors will see.
 3. Click **Start sharing**.
 4. On the other device, scan the QR code, or type in the link and the PIN.
 
-Ferry doesn't sit in the Dock or taskbar. You can close the tab and sharing carries on. Open Ferry again to get the window back, and hit **Stop sharing** or **Quit Ferry** when you're finished. If nothing is being shared and the window has been closed for 3 minutes, it quits on its own.
+Ferry doesn't sit in the Dock or taskbar. You can close the window and sharing carries on. Open Ferry again to get the window back, and hit **Stop sharing** when you're finished, or **Quit Ferry** in **Settings**. If nothing is being shared and the window has been closed for 3 minutes, it quits on its own.
 
 ### Sharing a folder
 
@@ -50,21 +50,25 @@ If you've got a site running on your computer, like a dev server on port 3000, F
 
 Tick **Also allow access from outside this Wi-Fi** and you get a second link that works on any network. It uses a free Cloudflare tunnel. The first time, Ferry downloads Cloudflare's official `cloudflared` program (about 40 MB) and keeps it for next time. The link changes every time you start sharing, and visitors still need the PIN.
 
+### Keeping a folder up to date from another computer
+
+On the **Receive** page, Ferry looks for other computers on your Wi-Fi that are sharing a folder. Click one, choose a folder on this computer and type the PIN from the other one, then click **Start receiving**. Ferry copies the folder and keeps checking for changes. Files removed on the other computer are moved to a `.ferry-removed` folder here rather than deleted, and files you add yourself are left alone. On the sharing computer, tick **Keep the same PIN when sharing starts again** so this keeps working after a restart.
+
 ### Transferring files with a server (FTP and SFTP)
 
-Click **Transfer files** at the top of the window to connect to a server, like your website host, a NAS drive or a Raspberry Pi. It works like FileZilla: your computer's files on the left, the server's on the right.
+Click **Transfer files** at the top of the window, then **Connect to a server**, like your website host, a NAS drive or a Raspberry Pi. It works like FileZilla: your computer's files on the left, the server's on the right.
 
 - Pick the kind of server: **SFTP**, **FTP over TLS**, **FTPS** (implicit) or plain **FTP**. Your host's control panel usually says which one to use. For SFTP you can leave the password empty to log in with your SSH key.
 - Select files and click **Upload to server** or **Download here**, or drag them from one side to the other. Whole folders work too.
-- Transfers run one after another in the list underneath, with progress, and you can cancel any of them. You can keep browsing while they run.
+- Transfers run one after another in the strip along the bottom, with progress, and you can cancel any of them. You can keep browsing while they run.
 - On the server side you can also make folders, rename and delete.
-- Your last 10 connections are listed under **Recent connections**, along with the folder you had open. Click one to fill in the details, then type the password. Passwords are never saved.
+- Your last 10 connections are listed under **Recent connections** when you connect, along with the folder you had open. Click one to fill in the details, then type the password. Passwords are never saved.
 
 The first time you connect to a server, Ferry shows its fingerprint and asks if you trust it, the same way FileZilla does. If that fingerprint ever changes, Ferry refuses to connect and tells you, because it can mean someone is pretending to be the server. If the server really was reinstalled, remove it under **Settings > Trusted servers** and connect again. Servers already in your `~/.ssh/known_hosts` are trusted automatically.
 
 ### Updates
 
-Each time Ferry opens, it checks GitHub for a newer release. If there is one, it downloads it in the background and the window shows an **Update ready** banner. Click **Restart to update** when it suits you. Ferry restarts on the new version, and your settings are kept. Sharing stops during the restart, so you'll need to start it again. If the check can't reach GitHub, Ferry just tries again next time.
+Each time Ferry opens, it checks GitHub for a newer release. If there is one, it downloads it in the background and a banner across the top of the window says it's ready. Click **Restart to update** when it suits you. Ferry restarts on the new version, and your settings are kept. Sharing stops during the restart, so you'll need to start it again. If the check can't reach GitHub, Ferry just tries again next time.
 
 ## Keeping it safe
 
