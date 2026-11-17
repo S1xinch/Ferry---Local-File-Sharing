@@ -386,6 +386,13 @@ dialog h3{margin:0 0 10px;font-size:16px}
 <div class="dlg-btns"><span class="grow"></span><button type="button" id="trust-no">Cancel</button><button type="button" class="primary" id="trust-yes">Trust and connect</button></div>
 </form></dialog>
 
+<dialog id="ask"><form onsubmit="return false">
+<h3 id="ask-title"></h3>
+<p id="ask-text" style="margin:0;white-space:pre-line"></p>
+<input type="text" id="ask-input" spellcheck="false" style="width:100%;margin-top:10px" aria-labelledby="ask-title" hidden>
+<div class="dlg-btns"><span class="grow"></span><button type="button" id="ask-no">Cancel</button><button type="button" id="ask-ok">OK</button></div>
+</form></dialog>
+
 <div id="toast" role="status"></div>
 <div id="offline"><div><b>Ferry is not running</b><p id="offline-text" style="margin:6px 0 0"></p></div></div>
 
@@ -428,6 +435,31 @@ function toast(msg, err) {
 }
 
 function offline(msg) { $("offline-text").textContent = msg; $("offline").classList.add("show"); }
+
+// ask shows a question inside the window. It resolves to true, or the typed
+// text when o.value is set, for OK, and to null for Cancel or Escape.
+function ask(o) {
+  return new Promise(function (done) {
+    var d = $("ask"), input = $("ask-input"), ok = $("ask-ok"), typed = o.value !== undefined;
+    // The answer is settled here rather than on the dialog's close event,
+    // which Chrome does not always fire when the dialog is reused.
+    function finish(yes) { if (d.open) d.close(); done(yes ? (typed ? input.value.trim() : true) : null); }
+    $("ask-title").textContent = o.title;
+    $("ask-text").textContent = o.text || "";
+    $("ask-text").hidden = !o.text;
+    input.hidden = !typed;
+    input.value = o.value || "";
+    ok.textContent = o.ok || "OK";
+    ok.className = o.danger ? "danger" : "primary";
+    ok.onclick = function () { finish(true); };
+    input.onkeydown = function (ev) { if (ev.key === "Enter") { ev.preventDefault(); finish(true); } };
+    $("ask-no").onclick = function () { finish(false); };
+    d.oncancel = function () { finish(false); };
+    d.showModal();
+    if (typed) { input.focus(); input.select(); } else ok.focus();
+  });
+}
+function askIf(needed, o) { return needed ? ask(o) : Promise.resolve(true); }
 
 /* ---------- pages ---------- */
 var page = "share", visited = {};
@@ -515,7 +547,7 @@ function showPreview(force) {
       nm.title = e.name;
       tr.appendChild(nm);
       tr.appendChild(el("td", "num", e.dir ? "" : fmtSize(e.size)));
-      tr.appendChild(el("td", "num", fmtDate(e.mod)));
+      tr.appendChild(el("td", "num dt", fmtDate(e.mod)));
       body.appendChild(tr);
     });
     table.appendChild(body);
@@ -639,13 +671,19 @@ function renderMirror(mr) {
 
 /* ---------- updates, settings, quit ---------- */
 $("quit").onclick = function () {
-  if ((running || receiving || xfer.busy) && !confirm("Quitting stops sharing, receiving and any transfers. Quit Ferry?")) return;
-  closing = "Ferry has closed. You can close this window.";
-  call("/api/quit", {}).finally(function () { offline(closing); });
+  askIf(running || receiving || xfer.busy, {title: "Quit Ferry?", text: "Quitting stops sharing, receiving and any transfers.", ok: "Quit Ferry", danger: true})
+    .then(function (yes) {
+      if (!yes) return;
+      closing = "Ferry has closed. You can close this window.";
+      call("/api/quit", {}).finally(function () { offline(closing); });
+    });
 };
 
 $("update-go").onclick = function () {
-  if (running && !confirm("Updating restarts Ferry and stops sharing. Update now?")) return;
+  askIf(running, {title: "Update now?", text: "Updating restarts Ferry and stops sharing.", ok: "Restart to update"})
+    .then(function (yes) { if (yes) updateNow(); });
+};
+function updateNow() {
   $("update-go").disabled = true;
   closing = "Ferry is restarting with the new version. Its window will open in a moment.";
   call("/api/update", {}).then(function () { offline(closing); }).catch(function (e) {
@@ -658,7 +696,7 @@ $("update-go").onclick = function () {
     $("update-text").textContent = msg;
     $("check-status").textContent = msg;
   });
-};
+}
 $("update-later").onclick = function () { laterVersion = (last && last.update.version) || ""; $("update").hidden = true; };
 
 var prefsFilled = false, savedTimer = null;
@@ -777,8 +815,8 @@ $("trust-yes").onclick = function () { $("trust-dlg").close(); connectNow(xfer.p
 $("trust-no").onclick = function () { $("trust-dlg").close(); xfer.pendingTrust = null; };
 
 $("disconnect").onclick = function () {
-  if (xfer.busy && !confirm("Transfers are still running. Disconnect and cancel them?")) return;
-  call("/api/remote/disconnect", {}).then(refresh);
+  askIf(xfer.busy, {title: "Disconnect?", text: "Transfers are still running. Disconnecting cancels them.", ok: "Disconnect", danger: true})
+    .then(function (yes) { if (yes) call("/api/remote/disconnect", {}).then(refresh); });
 };
 
 function fillFromRecent(r) {
@@ -925,7 +963,7 @@ function drawPane(side) {
     tr.appendChild(ck);
     tr.appendChild(nm);
     tr.appendChild(el("td", "num", e.dir ? "" : fmtSize(e.size)));
-    tr.appendChild(el("td", "num", fmtDate(e.mod)));
+    tr.appendChild(el("td", "num dt", fmtDate(e.mod)));
     tr.onclick = function (ev) { toggle(side, i, ev.shiftKey, ev.ctrlKey || ev.metaKey); };
     tr.ondblclick = function () { if (e.dir) openFolder(side, e.name); };
     tr.ondragstart = function (ev) {
@@ -969,14 +1007,15 @@ function send(from) {
   var there = {};
   xfer[to].entries.forEach(function (e) { there[e.name] = true; });
   var clash = items.filter(function (e) { return there[e.name]; }).map(function (e) { return e.name; });
-  if (clash.length) {
-    var list = clash.slice(0, 5).join(", ") + (clash.length > 5 ? " and " + (clash.length - 5) + " more" : "");
-    if (!confirm("Already there: " + list + ".\n\nReplace them? Files with the same name are overwritten.")) return;
-  }
-  call("/api/transfer", {
-    up: from === "local", localDir: xfer.local.path, remoteDir: xfer.remote.path, items: items
-  }).then(function () { xfer[from].sel = {}; drawPane(from); refresh(); })
-    .catch(function (e) { xerr(e.message); });
+  var list = clash.slice(0, 5).join(", ") + (clash.length > 5 ? " and " + (clash.length - 5) + " more" : "");
+  askIf(clash.length, {title: "Replace files?", text: "Already there: " + list + ".\nFiles with the same name are overwritten.", ok: "Replace"})
+    .then(function (yes) {
+      if (!yes) return;
+      call("/api/transfer", {
+        up: from === "local", localDir: xfer.local.path, remoteDir: xfer.remote.path, items: items
+      }).then(function () { xfer[from].sel = {}; drawPane(from); refresh(); })
+        .catch(function (e) { xerr(e.message); });
+    });
 }
 
 ["local", "remote"].forEach(function (side) {
@@ -1004,27 +1043,32 @@ function send(from) {
 });
 
 q("remote", "mkdir").onclick = function () {
-  var name = prompt("Name of the new folder");
-  if (!name) return;
-  call("/api/remote/mkdir", {dir: xfer.remote.path, name: name.trim()})
-    .then(function () { loadPane("remote", xfer.remote.path); }).catch(function (e) { xerr(e.message); });
+  ask({title: "New folder", text: "Name of the new folder on the server.", value: "", ok: "Create"}).then(function (name) {
+    if (!name) return;
+    call("/api/remote/mkdir", {dir: xfer.remote.path, name: name})
+      .then(function () { loadPane("remote", xfer.remote.path); }).catch(function (e) { xerr(e.message); });
+  });
 };
 q("remote", "rename").onclick = function () {
   var e = selected("remote")[0];
   if (!e) return;
-  var to = prompt("New name for " + e.name, e.name);
-  if (!to || to === e.name) return;
-  call("/api/remote/rename", {dir: xfer.remote.path, from: e.name, to: to.trim()})
-    .then(function () { loadPane("remote", xfer.remote.path); }).catch(function (err) { xerr(err.message); });
+  ask({title: "Rename", text: "New name for " + e.name + ".", value: e.name, ok: "Rename"}).then(function (to) {
+    if (!to || to === e.name) return;
+    call("/api/remote/rename", {dir: xfer.remote.path, from: e.name, to: to})
+      .then(function () { loadPane("remote", xfer.remote.path); }).catch(function (err) { xerr(err.message); });
+  });
 };
 q("remote", "delete").onclick = function () {
   var items = selected("remote");
   if (!items.length) return;
   var dirs = items.filter(function (e) { return e.dir; }).length;
   var what = items.length === 1 ? "“" + items[0].name + "”" : items.length + " items";
-  if (!confirm("Delete " + what + " from the server?" + (dirs ? "\n\nFolders are deleted with everything inside them." : "") + "\n\nThis cannot be undone.")) return;
-  call("/api/remote/delete", {dir: xfer.remote.path, items: items.map(function (e) { return {name: e.name, dir: e.dir}; })})
-    .then(function () { loadPane("remote", xfer.remote.path); }).catch(function (err) { xerr(err.message); });
+  ask({title: "Delete " + what + " from the server?", text: (dirs ? "Folders are deleted with everything inside them. " : "") + "This cannot be undone.", ok: "Delete", danger: true})
+    .then(function (yes) {
+      if (!yes) return;
+      call("/api/remote/delete", {dir: xfer.remote.path, items: items.map(function (e) { return {name: e.name, dir: e.dir}; })})
+        .then(function () { loadPane("remote", xfer.remote.path); }).catch(function (err) { xerr(err.message); });
+    });
 };
 
 $("q-cancel").onclick = function () { call("/api/transfer/cancel", {id: 0}).then(refresh); };
