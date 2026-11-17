@@ -30,8 +30,7 @@ var pages = template.Must(template.New("").Parse(`
 :root{--bg:#f6f6f4;--panel:#fff;--line:#e2e1dc;--text:#1d1d1b;--dim:#5f5e59;--accent:#1f5fbf;--accent-text:#fff;
 --out:#b42318;--out-bg:#fdecea;--out-fill:#c4320a;--out-ink:#fff;--low:#8a4a00;--low-bg:#fff4e0;--low-fill:#f5b347;--low-ink:#2b1a00;
 --ok:#2e8540;--track:#ecebe6;--hover:#f0efea;--sel:#e7eefa;--input:#fff;
---mono:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;
---card:var(--panel);--muted:var(--dim);--bad:var(--out)}
+--mono:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace}
 @media (prefers-color-scheme:dark){:root{--bg:#161716;--panel:#1f201e;--line:#34352f;--text:#ecebe6;--dim:#a3a29b;--accent:#7aa7ff;--accent-text:#0b1730;
 --out:#ff8f80;--out-bg:#3a1c19;--low:#f3b453;--low-bg:#382910;--low-fill:#f3b453;--ok:#4caf68;--track:#2c2d29;--hover:#272824;--sel:#1e2a3e;--input:#191a18;color-scheme:dark}}
 *{box-sizing:border-box}
