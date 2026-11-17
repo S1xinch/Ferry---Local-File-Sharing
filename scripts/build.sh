@@ -46,7 +46,14 @@ for target in $TARGETS; do
 			lipo -create -output "$APP/Contents/MacOS/ferry" dist/mac/ferry-arm64 dist/mac/ferry-amd64
 			# Ad-hoc signature: required for Apple Silicon to run it at all
 			codesign --force --deep --sign - "$APP"
+			# The zip is what the built-in updater downloads, keep its name.
 			(cd dist/mac && ditto -c -k --keepParent Ferry.app ../ferry-mac.zip)
+			# The disk image is for first installs: Ferry next to an
+			# Applications shortcut, so people drag one onto the other.
+			mkdir -p dist/mac/dmg
+			ditto "$APP" dist/mac/dmg/Ferry.app
+			ln -s /Applications dist/mac/dmg/Applications
+			hdiutil create -volname Ferry -srcfolder dist/mac/dmg -ov -format UDZO dist/ferry-mac.dmg
 		else
 			cp dist/mac/ferry-arm64 "$APP/Contents/MacOS/ferry"
 			(cd dist/mac && zip -qry ../ferry-mac-unsigned-arm64.zip Ferry.app)

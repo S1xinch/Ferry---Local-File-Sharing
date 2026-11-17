@@ -57,6 +57,6 @@ jobs:
           generate_release_notes: true
           body: |
             **Windows:** download `ferry-windows-x64.exe` and double-click it.
-            **Mac:** download `ferry-mac.zip`, unzip it, and move Ferry to Applications.
+            **Mac:** download `ferry-mac.dmg`, open it, and drag Ferry onto the Applications folder.
 
             The first time you open it your computer will warn you because the app is not from a paid developer account. See the README for the one-time steps.

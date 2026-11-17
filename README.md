@@ -13,7 +13,7 @@ Grab the latest version from the [Releases page](../../releases/latest).
 | Computer | File |
 | --- | --- |
 | Windows | `ferry-windows-x64.exe` (or `ferry-windows-arm64.exe` for ARM laptops, like Snapdragon ones) |
-| Mac (Apple Silicon or Intel) | `ferry-mac.zip` |
+| Mac (Apple Silicon or Intel) | `ferry-mac.dmg` |
 
 ### Opening it the first time on Windows
 
@@ -23,7 +23,7 @@ When you start sharing, Windows asks if Ferry can use the network. Pick **Allow*
 
 ### Opening it the first time on Mac
 
-1. Unzip `ferry-mac.zip` and drag **Ferry** into **Applications**.
+1. Open `ferry-mac.dmg` and drag **Ferry** onto the **Applications** folder next to it. Then eject the Ferry disk in Finder.
 2. Open it. macOS will say it can't check the app for malware. Click **Done**.
 3. Go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to Ferry. Enter your password.
 
