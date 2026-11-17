@@ -488,7 +488,7 @@ function renderFoot(s) {
   if (page === "transfer") parts.push("Click to select, double-click a folder to open it, drag files from one side to the other, shift-click for a range");
   f.textContent = "";
   if (s.running || (mr && !mr.lastError)) f.appendChild(el("span", "dot"));
-  f.appendChild(el("span", "", parts.join("  |  ")));
+  f.appendChild(el("span", "", parts.join(" \\u00a0|\\u00a0 ")));
 }
 
 /* ---------- share ---------- */
@@ -1091,7 +1091,7 @@ function renderQueue(list) {
   if (active) sum.push(active + " to go" + (total ? ", " + fmtSize(Math.max(total - bytes, 0)) + " left" : ""));
   if (done) sum.push(done + " done");
   if (failed) sum.push(failed + " failed");
-  $("q-sum").textContent = sum.join("  |  ");
+  $("q-sum").textContent = sum.join(" \\u00a0|\\u00a0 ");
   // Running and waiting first, then the most recent finished ones.
   var order = list.filter(function (t) { return t.state === "running"; })
     .concat(list.filter(function (t) { return t.state === "queued"; }).slice(0, 50))
