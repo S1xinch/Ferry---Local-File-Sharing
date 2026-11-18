@@ -434,6 +434,14 @@ function toast(msg, err) {
   toastTimer = setTimeout(function () { t.className = ""; }, err ? 6000 : 2200);
 }
 
+// Links to websites open in the person's own browser, not inside the window.
+document.addEventListener("click", function (ev) {
+  var a = ev.target.closest && ev.target.closest("a[target=_blank]");
+  if (!a) return;
+  ev.preventDefault();
+  call("/api/open", {url: a.href}).catch(function () { window.open(a.href); });
+});
+
 function offline(msg) { $("offline-text").textContent = msg; $("offline").classList.add("show"); }
 
 // ask shows a question inside the window. It resolves to true, or the typed

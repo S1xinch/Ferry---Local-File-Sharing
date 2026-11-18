@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,6 +70,7 @@ type app struct {
 	mir      *mirror // set while receiving from another computer
 	staged   *stagedUpdate
 	relaunch string // set when an update is installed; started after this copy closes
+	show     chan struct{} // asks the native window to open again, nil without one
 
 	hubOnce    sync.Once
 	hub        *remoteHub                                        // the Transfer files page, see remote()
@@ -96,7 +98,11 @@ func runApp() (string, error) {
 	if err != nil {
 		// Already running: just show its window again.
 		if tok, e := os.ReadFile(tokenFile); e == nil && panelAlive(panelPort) {
-			return "", openWindow(panelURL(panelPort, strings.TrimSpace(string(tok))))
+			t := strings.TrimSpace(string(tok))
+			if askToShow(panelPort, t) {
+				return "", nil
+			}
+			return "", openWindow(panelURL(panelPort, t)) // an older copy without /api/show
 		}
 		if ln, err = net.Listen("tcp", "127.0.0.1:0"); err != nil {
 			return "", err
@@ -122,12 +128,21 @@ func runApp() (string, error) {
 	go srv.Serve(ln)
 	defer srv.Close()
 
-	if err := openWindow(panelURL(a.port, a.token)); err != nil {
-		return "", fmt.Errorf("could not open your browser: %w", err)
-	}
+	url := panelURL(a.port, a.token)
+	a.show = make(chan struct{}, 1)
 	go a.idleWatch()
 	go a.updateLoop()
-	<-a.quit
+	// A window of Ferry's own, so the taskbar and Dock show Ferry. Without
+	// one (Linux, or no WebView2), fall back to a Chrome or Edge app window.
+	if !nativeWindow(url, a.show, a.quit, a.stopApp) {
+		a.mu.Lock()
+		a.show = nil
+		a.mu.Unlock()
+		if err := openWindow(url); err != nil {
+			return "", fmt.Errorf("could not open your browser: %w", err)
+		}
+		<-a.quit
+	}
 
 	a.mu.Lock()
 	if a.cur != nil {
@@ -175,6 +190,47 @@ func (a *app) idleWatch() {
 
 func (a *app) stopApp() { a.once.Do(func() { close(a.quit) }) }
 
+// showWindow brings the app window back when Ferry is opened a second time.
+func (a *app) showWindow() {
+	a.mu.Lock()
+	ch := a.show
+	a.mu.Unlock()
+	if ch == nil {
+		openWindow(panelURL(a.port, a.token))
+		return
+	}
+	select {
+	case ch <- struct{}{}:
+	default: // already asked
+	}
+}
+
+// askToShow asks the copy already running to show its window.
+func askToShow(port int, token string) bool {
+	c := http.Client{Timeout: 2 * time.Second}
+	resp, err := c.Get(fmt.Sprintf("http://127.0.0.1:%d/api/show?k=%s", port, url.QueryEscape(token)))
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// openLink opens a link from the window, like the release notes, in the
+// person's own browser instead of inside the app window.
+func (a *app) openLink(r *http.Request) (any, error) {
+	var in struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&in); err != nil {
+		return nil, errors.New("bad request")
+	}
+	if !strings.HasPrefix(in.URL, "https://") {
+		return nil, errors.New("only web links can be opened")
+	}
+	return map[string]bool{"ok": true}, openBrowser(in.URL)
+}
+
 func (a *app) loadSettings() {
 	b, err := os.ReadFile(filepath.Join(a.dir, "settings.json"))
 	if err == nil {
@@ -191,6 +247,15 @@ func (a *app) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/ping", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ferry") })
 	mux.HandleFunc("GET /{$}", a.page)
+	mux.HandleFunc("GET /api/show", func(w http.ResponseWriter, r *http.Request) {
+		if !equal(r.URL.Query().Get("k"), a.token) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		a.showWindow()
+		io.WriteString(w, "ok")
+	})
+	mux.HandleFunc("POST /api/open", a.api(a.openLink))
 	mux.HandleFunc("GET /api/state", a.api(a.state))
 	mux.HandleFunc("POST /api/pick", a.api(a.pick))
 	mux.HandleFunc("POST /api/start", a.api(a.start))

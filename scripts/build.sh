@@ -39,9 +39,11 @@ for target in $TARGETS; do
 		mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 		sed "s/__VERSION__/$VERSION/g" packaging/Info.plist >"$APP/Contents/Info.plist"
 		cp packaging/icons/icon.icns "$APP/Contents/Resources/icon.icns"
-		build darwin arm64 dist/mac/ferry-arm64
-		build darwin amd64 dist/mac/ferry-amd64
 		if command -v lipo >/dev/null; then
+			# On a Mac, build with cgo so the app gets its own window (window_darwin.go).
+			export MACOSX_DEPLOYMENT_TARGET=11.0
+			CGO_ENABLED=1 CC="clang -arch arm64" build darwin arm64 dist/mac/ferry-arm64
+			CGO_ENABLED=1 CC="clang -arch x86_64" build darwin amd64 dist/mac/ferry-amd64
 			# One app that runs natively on both Apple Silicon and Intel Macs
 			lipo -create -output "$APP/Contents/MacOS/ferry" dist/mac/ferry-arm64 dist/mac/ferry-amd64
 			# Ad-hoc signature: required for Apple Silicon to run it at all
@@ -55,6 +57,9 @@ for target in $TARGETS; do
 			ln -s /Applications dist/mac/dmg/Applications
 			hdiutil create -volname Ferry -srcfolder dist/mac/dmg -ov -format UDZO dist/ferry-mac.dmg
 		else
+			# Elsewhere there is no cgo: the app falls back to a Chrome or Edge window.
+			build darwin arm64 dist/mac/ferry-arm64
+			build darwin amd64 dist/mac/ferry-amd64
 			cp dist/mac/ferry-arm64 "$APP/Contents/MacOS/ferry"
 			(cd dist/mac && zip -qry ../ferry-mac-unsigned-arm64.zip Ferry.app)
 		fi

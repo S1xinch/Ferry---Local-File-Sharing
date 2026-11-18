@@ -36,7 +36,7 @@ You only have to do that once. If macOS asks whether Ferry can accept incoming c
 3. Click **Start sharing**.
 4. On the other device, scan the QR code, or type in the link and the PIN.
 
-Ferry doesn't sit in the Dock or taskbar. You can close the window and sharing carries on. Open Ferry again to get the window back, and hit **Stop sharing** when you're finished, or **Quit Ferry** in **Settings**. If nothing is being shared and the window has been closed for 3 minutes, it quits on its own.
+You can close the window and sharing carries on. Open Ferry again, or on a Mac click it in the Dock, to get the window back, and hit **Stop sharing** when you're finished, or **Quit Ferry** in **Settings**. If nothing is being shared and the window has been closed for 3 minutes, it quits on its own.
 
 ### Sharing a folder
 
