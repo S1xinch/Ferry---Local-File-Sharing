@@ -32,3 +32,15 @@ func TestLinkTokenLogsIn(t *testing.T) {
 		t.Fatalf("wrong token got through")
 	}
 }
+
+func TestRecordFailureReportsLockout(t *testing.T) {
+	a := newAuth("123456")
+	for i := 1; i < perIPTries; i++ {
+		if a.recordFailure("10.0.0.9") {
+			t.Fatalf("locked out after %d tries", i)
+		}
+	}
+	if !a.recordFailure("10.0.0.9") || a.locked("10.0.0.9") == 0 {
+		t.Fatal("not locked out after the last try")
+	}
+}

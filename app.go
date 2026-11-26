@@ -32,6 +32,8 @@ type settings struct {
 	Folder       string `json:"folder"`
 	Target       int    `json:"target"`
 	Uploads      bool   `json:"uploads"`
+	DropOnly     bool   `json:"dropOnly"`  // visitors can only upload, not see the folder
+	StopAfter    int    `json:"stopAfter"` // minutes until sharing stops by itself, 0 for never
 	Internet     bool   `json:"internet"`
 	KeepPIN      bool   `json:"keepPin"`      // reuse the same PIN when sharing starts again
 	PIN          string `json:"pin"`          // saved only while KeepPIN is on
@@ -64,12 +66,13 @@ type app struct {
 
 	mu       sync.Mutex
 	cur      *share
+	stopped  string // why the last share stopped by itself, shown until the next one
 	lastSeen time.Time
 	settings settings
 	update   updateState
 	mir      *mirror // set while receiving from another computer
 	staged   *stagedUpdate
-	relaunch string // set when an update is installed; started after this copy closes
+	relaunch string        // set when an update is installed; started after this copy closes
 	show     chan struct{} // asks the native window to open again, nil without one
 
 	hubOnce    sync.Once
@@ -260,6 +263,8 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /api/pick", a.api(a.pick))
 	mux.HandleFunc("POST /api/start", a.api(a.start))
 	mux.HandleFunc("POST /api/stop", a.api(a.stop))
+	mux.HandleFunc("POST /api/text", a.api(a.sendText))
+	mux.HandleFunc("POST /api/text/clear", a.api(a.clearTexts))
 	mux.HandleFunc("POST /api/mirror/stop", a.api(a.stopMirror))
 	mux.HandleFunc("POST /api/discover", a.api(a.discover))
 	mux.HandleFunc("POST /api/quit", a.api(a.quitHandler))
@@ -359,6 +364,11 @@ type state struct {
 	Links          []link        `json:"links"`
 	InternetStatus string        `json:"internetStatus"`
 	Activity       []string      `json:"activity"`
+	Visitors       []visitorView `json:"visitors"`
+	Texts          []textMsg     `json:"texts"`
+	EndsIn         int           `json:"endsIn"`  // seconds until sharing stops by itself, 0 if it does not
+	EndsAt         string        `json:"endsAt"`  // "15:42"
+	Stopped        string        `json:"stopped"` // why the last share stopped by itself
 	Update         updateState   `json:"update"`
 	Mirror         *mirrorStatus `json:"mirror,omitempty"`
 	Remote         remoteState   `json:"remote"`
@@ -374,7 +384,7 @@ func qrDataURL(text string) string {
 
 func (a *app) state(r *http.Request) (any, error) {
 	a.mu.Lock()
-	s, st := a.cur, state{Settings: a.settings, Activity: recentActivity(30), Update: a.update}
+	s, st := a.cur, state{Settings: a.settings, Activity: recentActivity(30), Update: a.update, Stopped: a.stopped}
 	a.mu.Unlock()
 	st.Remote = a.remote().state()
 	a.mu.Lock()
@@ -387,6 +397,10 @@ func (a *app) state(r *http.Request) (any, error) {
 		return st, nil
 	}
 	st.Running, st.What, st.PIN = true, s.what, s.cfg.pin
+	st.Visitors, st.Texts = s.visitors.list(time.Now()), s.texts.all()
+	if !s.ends.IsZero() {
+		st.EndsIn, st.EndsAt = max(1, int(time.Until(s.ends).Seconds())+1), s.ends.Format("15:04")
+	}
 	for _, u := range s.lanURLs() {
 		st.Links = append(st.Links, link{Label: "Same Wi-Fi", URL: u, QR: qrDataURL(s.withToken(u))})
 	}
@@ -420,6 +434,9 @@ func (a *app) start(r *http.Request) (any, error) {
 	if in.Mode == "receive" {
 		return a.startReceive(in, strings.TrimSpace(req.ReceivePIN))
 	}
+	if in.StopAfter < 0 || in.StopAfter > 7*24*60 {
+		return nil, errors.New("choose when sharing should stop by itself")
+	}
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -428,14 +445,14 @@ func (a *app) start(r *http.Request) (any, error) {
 	}
 	// Keep the receive settings and the Settings page choices when sharing.
 	in.Server, in.MirrorFolder, in.PIN, in.Prefs = a.settings.Server, a.settings.MirrorFolder, "", a.settings.Prefs
-	cfg := config{mode: in.Mode, internet: in.Internet, readOnly: !in.Uploads,
-		port: in.Prefs.Port, hidden: in.Prefs.Hidden}
+	cfg := config{mode: in.Mode, internet: in.Internet, readOnly: !in.Uploads && !in.DropOnly,
+		port: in.Prefs.Port, hidden: in.Prefs.Hidden, stopAfter: time.Duration(in.StopAfter) * time.Minute}
 	switch in.Mode {
 	case "files":
 		if in.Folder == "" {
 			return nil, errors.New("choose a folder to share first")
 		}
-		cfg.folder = in.Folder
+		cfg.folder, cfg.dropOnly = in.Folder, in.DropOnly
 		if in.KeepPIN && a.settings.PIN != "" {
 			cfg.pin = a.settings.PIN
 		}
@@ -454,10 +471,62 @@ func (a *app) start(r *http.Request) (any, error) {
 	if in.KeepPIN {
 		in.PIN = s.cfg.pin
 	}
-	a.cur, a.settings = s, in
+	a.cur, a.settings, a.stopped = s, in, ""
 	a.saveSettings()
 	if in.Internet {
 		go s.startInternet()
+	}
+	if cfg.stopAfter > 0 {
+		go a.stopWhenDue(s)
+	}
+	return map[string]bool{"ok": true}, nil
+}
+
+// stopWhenDue stops a share at the time chosen for it, unless it was
+// stopped before then.
+func (a *app) stopWhenDue(s *share) {
+	select {
+	case <-s.expired:
+	case <-s.ctx.Done():
+		return
+	}
+	a.mu.Lock()
+	if a.cur != s {
+		a.mu.Unlock()
+		return
+	}
+	a.cur = nil
+	a.stopped = "Sharing stopped by itself at " + time.Now().Format("15:04") + ", as you chose."
+	a.mu.Unlock()
+	s.stop()
+}
+
+// sendText shows a text to visitors of the folder being shared.
+func (a *app) sendText(r *http.Request) (any, error) {
+	var in struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil {
+		return nil, errors.New("bad request")
+	}
+	a.mu.Lock()
+	s := a.cur
+	a.mu.Unlock()
+	if s == nil || s.cfg.mode != "files" {
+		return nil, errors.New("start sharing a folder first")
+	}
+	if err := s.texts.add("", true, in.Text); err != nil {
+		return nil, err
+	}
+	return map[string]bool{"ok": true}, nil
+}
+
+func (a *app) clearTexts(r *http.Request) (any, error) {
+	a.mu.Lock()
+	s := a.cur
+	a.mu.Unlock()
+	if s != nil {
+		s.texts.clear()
 	}
 	return map[string]bool{"ok": true}, nil
 }
@@ -509,7 +578,7 @@ func (a *app) stopMirror(r *http.Request) (any, error) {
 func (a *app) stop(r *http.Request) (any, error) {
 	a.mu.Lock()
 	s := a.cur
-	a.cur = nil
+	a.cur, a.stopped = nil, ""
 	a.mu.Unlock()
 	if s != nil {
 		s.stop()

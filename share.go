@@ -24,6 +24,13 @@ type share struct {
 	closer   func()
 	stopFind func() // answers "who is sharing?" on the local network
 
+	ends    time.Time     // when it stops by itself, zero if it does not
+	expired chan struct{} // closed at ends
+	timer   *time.Timer
+
+	visitors visitors
+	texts    texts
+
 	mu        sync.Mutex
 	tunnelURL string
 	tunnelMsg string
@@ -46,6 +53,7 @@ func startShare(cfg config) (*share, error) {
 		if err != nil {
 			return nil, err
 		}
+		fs.dropOnly = cfg.dropOnly
 		app, s.what, s.closer = fs, abs, func() { fs.root.Close() }
 	case "site":
 		if cfg.target < 1 || cfg.target > 65535 {
@@ -63,14 +71,18 @@ func startShare(cfg config) (*share, error) {
 	}
 	s.port = ln.Addr().(*net.TCPAddr).Port
 	s.stopFind = func() {}
-	if cfg.mode == "files" && !cfg.hidden {
+	// A drop box cannot be copied, so other computers are not told about it.
+	if cfg.mode == "files" && !cfg.hidden && !cfg.dropOnly {
 		s.stopFind = answerDiscovery(s.what, s.port)
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__ferry/login", s.auth.loginHandler)
 	mux.HandleFunc("/__ferry/logout", s.auth.logoutHandler)
-	mux.Handle("/", s.auth.require(app))
+	if cfg.mode == "files" {
+		mux.Handle("/__ferry/texts", s.auth.require(s.track(http.HandlerFunc(s.textsHandler))))
+	}
+	mux.Handle("/", s.auth.require(s.track(app)))
 	s.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := s.srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -79,8 +91,21 @@ func startShare(cfg config) (*share, error) {
 	}()
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
+	s.expired = make(chan struct{})
+	if cfg.stopAfter > 0 {
+		s.ends = time.Now().Add(cfg.stopAfter)
+		s.timer = time.AfterFunc(cfg.stopAfter, func() { close(s.expired) })
+	}
 	logf("Started sharing %s", s.what)
 	return s, nil
+}
+
+// track adds the visitor to the Visitors list before serving them.
+func (s *share) track(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.visitors.saw(r)
+		next.ServeHTTP(w, r)
+	})
 }
 
 // lanURLs are the addresses other devices on the same network can use.
@@ -132,6 +157,9 @@ func (s *share) startInternet() error {
 }
 
 func (s *share) stop() {
+	if s.timer != nil {
+		s.timer.Stop()
+	}
 	s.cancel()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
