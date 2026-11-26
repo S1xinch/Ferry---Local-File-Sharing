@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -23,6 +24,8 @@ type fileShare struct {
 	root     *os.Root
 	name     string
 	readOnly bool
+	dropOnly bool // visitors only get a box to upload into: no listing, no downloads
+	opens    openLog
 }
 
 func newFileShare(dir string, readOnly bool) (*fileShare, error) {
@@ -51,6 +54,10 @@ func rel(urlPath string) string {
 
 func (s *fileShare) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := rel(r.URL.Path)
+	if s.dropOnly {
+		s.serveDrop(w, r, p)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
 		s.serveGet(w, r, p)
@@ -79,8 +86,13 @@ func (s *fileShare) serveGet(w http.ResponseWriter, r *http.Request, p string) {
 	}
 
 	if !info.IsDir() {
+		verb := "opened "
 		if r.URL.Query().Has("dl") {
+			verb = "downloaded "
 			w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(info.Name()))
+		}
+		if !r.URL.Query().Has("thumb") { // the small pictures in the list are not opens
+			s.opens.note(r, verb+p)
 		}
 		http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 		return
@@ -90,6 +102,11 @@ func (s *fileShare) serveGet(w http.ResponseWriter, r *http.Request, p string) {
 		return
 	}
 	if r.URL.Query().Has("zip") {
+		if p == "." {
+			s.opens.note(r, "downloaded everything as a zip")
+		} else {
+			s.opens.note(r, "downloaded "+p+" as a zip")
+		}
 		s.zipFolder(w, p)
 		return
 	}
@@ -137,15 +154,37 @@ type listPage struct {
 	Notice   string
 }
 
-func (s *fileShare) list(w http.ResponseWriter, r *http.Request, p string, des []os.DirEntry) {
-	page := listPage{Title: s.name, ReadOnly: s.readOnly}
-	switch r.URL.Query().Get("done") {
-	case "":
-	case "1":
-		page.Notice = "1 file uploaded."
-	default:
-		page.Notice = r.URL.Query().Get("done") + " files uploaded."
+// serveDrop is the whole share in drop box mode: a page to upload files into
+// the top of the folder. Nothing in the folder can be seen or downloaded.
+func (s *fileShare) serveDrop(w http.ResponseWriter, r *http.Request, p string) {
+	if p != "." {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
 	}
+	switch r.Method {
+	case http.MethodGet, http.MethodHead:
+		render(w, "drop", listPage{Title: s.name, Notice: doneNotice(r)})
+	case http.MethodPost:
+		s.upload(w, r, p)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// doneNotice is the message shown after an upload, which redirects with ?done=<count>.
+func doneNotice(r *http.Request) string {
+	n, err := strconv.Atoi(r.URL.Query().Get("done"))
+	switch {
+	case err != nil || n < 0:
+		return ""
+	case n == 1:
+		return "1 file uploaded."
+	}
+	return fmt.Sprintf("%d files uploaded.", n)
+}
+
+func (s *fileShare) list(w http.ResponseWriter, r *http.Request, p string, des []os.DirEntry) {
+	page := listPage{Title: s.name, ReadOnly: s.readOnly, Notice: doneNotice(r)}
 
 	page.Crumbs = []crumb{{Name: s.name, Href: "/"}}
 	if p != "." {
@@ -219,7 +258,7 @@ func (s *fileShare) upload(w http.ResponseWriter, r *http.Request, dir string) {
 			http.Error(w, "Upload interrupted", http.StatusBadRequest)
 			return
 		}
-		logf("Received %s from %s", target, clientIP(r))
+		logf("Received %s from %s", target, who(r))
 		count++
 	}
 	http.Redirect(w, r, r.URL.Path+fmt.Sprintf("?done=%d", count), http.StatusSeeOther)

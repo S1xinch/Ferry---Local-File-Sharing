@@ -71,6 +71,13 @@ func newMirror(server, pin, dest string) *mirror {
 
 func (m *mirror) url(p string) string { return "http://" + m.server + p }
 
+// do sends a request saying it comes from Ferry, so the other computer's
+// activity list names it and leaves out each file it copies.
+func (m *mirror) do(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent", "Ferry/"+version)
+	return m.client.Do(req)
+}
+
 // login opens a session on the other computer with the PIN.
 func (m *mirror) login(ctx context.Context) error {
 	jar, err := cookiejar.New(nil)
@@ -90,7 +97,7 @@ func (m *mirror) login(ctx context.Context) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := m.client.Do(req)
+	resp, err := m.do(req)
 	if err != nil {
 		return fmt.Errorf("cannot reach %s, check that Ferry is running there and Tailscale is connected", m.server)
 	}
@@ -109,7 +116,7 @@ func (m *mirror) manifest(ctx context.Context) ([]manifestEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := m.client.Do(req)
+	resp, err := m.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +143,7 @@ func (m *mirror) download(ctx context.Context, e manifestEntry, local string) er
 	if err != nil {
 		return err
 	}
-	resp, err := m.client.Do(req)
+	resp, err := m.do(req)
 	if err != nil {
 		return err
 	}

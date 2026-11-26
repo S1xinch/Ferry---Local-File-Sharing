@@ -103,3 +103,64 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestShareStopsByItself(t *testing.T) {
+	s, err := startShare(config{mode: "files", folder: t.TempDir(), hidden: true, stopAfter: 50 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &app{cur: s}
+	if s.ends.IsZero() {
+		t.Fatal("share has no end time")
+	}
+	a.stopWhenDue(s) // returns once the time is up
+	if a.cur != nil || !strings.Contains(a.stopped, "stopped by itself") {
+		t.Fatalf("cur=%v stopped=%q", a.cur, a.stopped)
+	}
+	if s.ctx.Err() == nil {
+		t.Fatal("the share is still running")
+	}
+}
+
+func TestDropBoxAndTextsFromTheWindow(t *testing.T) {
+	a := &app{token: "secret", port: 47615, dir: t.TempDir(), quit: make(chan struct{}),
+		settings: settings{Mode: "files", Prefs: prefs{Hidden: true}}}
+	h := a.routes()
+	folder := jsonString(t, t.TempDir())
+
+	for _, bad := range []string{`-5`, `20000`} {
+		if code, _ := panelCall(t, h, "POST", "/api/start", `{"mode":"files","folder":`+folder+`,"stopAfter":`+bad+`}`); code != 400 {
+			t.Errorf("stopAfter %s: got %d, want 400", bad, code)
+		}
+	}
+	if code, _ := panelCall(t, h, "POST", "/api/text", `{"text":"hi"}`); code != 400 {
+		t.Errorf("text before sharing: got %d, want 400", code)
+	}
+
+	code, out := panelCall(t, h, "POST", "/api/start", `{"mode":"files","folder":`+folder+`,"dropOnly":true,"uploads":false,"stopAfter":60}`)
+	if code != 200 {
+		t.Fatalf("start: %d %v", code, out)
+	}
+	defer a.cur.stop()
+	if c := a.cur.cfg; !c.dropOnly || c.readOnly || c.stopAfter != time.Hour {
+		t.Fatalf("share config %+v", c)
+	}
+
+	if code, out := panelCall(t, h, "POST", "/api/text", `{"text":"the wifi password"}`); code != 200 {
+		t.Fatalf("send text: %d %v", code, out)
+	}
+	_, st := panelCall(t, h, "GET", "/api/state", "")
+	ts, _ := st["texts"].([]any)
+	if len(ts) != 1 || ts[0].(map[string]any)["host"] != true {
+		t.Fatalf("texts in state: %v", st["texts"])
+	}
+	if n, _ := st["endsIn"].(float64); n < 3500 || n > 3601 {
+		t.Errorf("endsIn = %v, want about an hour", st["endsIn"])
+	}
+	if _, ok := st["visitors"].([]any); !ok {
+		t.Errorf("visitors missing from state: %v", st["visitors"])
+	}
+	if code, _ := panelCall(t, h, "POST", "/api/text/clear", "{}"); code != 200 || len(a.cur.texts.all()) != 0 {
+		t.Error("clear did not remove the texts")
+	}
+}

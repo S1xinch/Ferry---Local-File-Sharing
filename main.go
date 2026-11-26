@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 )
 
 var version = "dev"
@@ -25,7 +26,11 @@ type config struct {
 	pin      string
 	internet bool
 	readOnly bool
+	dropOnly bool // files mode: visitors can only upload, not see the folder
 	hidden   bool // do not answer "who is sharing?" on the Wi-Fi
+
+	stopAfter  time.Duration // stop sharing by itself after this long, 0 for never
+	printTexts bool          // terminal version: print texts visitors send
 }
 
 func main() {
@@ -65,10 +70,12 @@ Usage:
   ferry site <port>            share a website already running on this PC
 
 Options:
-  --internet     also make it reachable from anywhere
-  --pin 123456   choose the PIN instead of a random one
-  --port 8080    port to listen on (default: first free from 8080)
-  --read-only    files mode: disable uploads
+  --internet        also make it reachable from anywhere
+  --pin 123456      choose the PIN instead of a random one
+  --port 8080       port to listen on (default: first free from 8080)
+  --read-only       files mode: disable uploads
+  --drop            files mode: people can upload but cannot see the folder
+  --stop-after 1h   stop sharing by itself after this long (like 30m or 2h)
 `, version)
 }
 
@@ -80,6 +87,8 @@ func parseArgs(args []string) (config, error) {
 	fs.StringVar(&cfg.pin, "pin", "", "")
 	fs.IntVar(&cfg.port, "port", 0, "")
 	fs.BoolVar(&cfg.readOnly, "read-only", false, "")
+	fs.BoolVar(&cfg.dropOnly, "drop", false, "")
+	fs.DurationVar(&cfg.stopAfter, "stop-after", 0, "")
 
 	// Allow flags before or after the positional argument.
 	var positional []string
@@ -120,16 +129,32 @@ func parseArgs(args []string) (config, error) {
 		usage()
 		return cfg, fmt.Errorf("unknown mode %q", cfg.mode)
 	}
+	if cfg.dropOnly && cfg.mode != "files" {
+		return cfg, errors.New("--drop only works when sharing a folder")
+	}
+	if cfg.dropOnly && cfg.readOnly {
+		return cfg, errors.New("--drop and --read-only cannot be used together")
+	}
+	if cfg.stopAfter < 0 {
+		return cfg, errors.New("--stop-after needs a length of time, like 30m or 2h")
+	}
 	return cfg, nil
 }
 
 func runCLI(cfg config) error {
+	cfg.printTexts = true
 	s, err := startShare(cfg)
 	if err != nil {
 		return err
 	}
 	fmt.Println()
 	fmt.Println("PIN:", s.cfg.pin)
+	if cfg.dropOnly {
+		fmt.Println("People can send you files but cannot see what is in the folder.")
+	}
+	if !s.ends.IsZero() {
+		fmt.Println("Sharing stops by itself at", s.ends.Format("15:04")+".")
+	}
 	fmt.Println()
 	for i, u := range s.lanURLs() {
 		fmt.Println("Same Wi-Fi: ", u)
@@ -152,8 +177,13 @@ func runCLI(cfg config) error {
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
-	fmt.Println()
+	select {
+	case <-sig:
+		fmt.Println()
+	case <-s.expired:
+		fmt.Println()
+		fmt.Println("Time is up.")
+	}
 	s.stop()
 	return nil
 }

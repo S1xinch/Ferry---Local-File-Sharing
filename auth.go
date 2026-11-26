@@ -105,6 +105,7 @@ func (a *auth) require(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if t := r.URL.Query().Get("t"); t != "" && equal(t, a.linkToken) {
 			a.setCookie(w, r)
+			logf("%s logged in with a QR code", who(r))
 			q := r.URL.Query()
 			q.Del("t")
 			u := *r.URL
@@ -134,7 +135,9 @@ func (a *auth) locked(ip string) time.Duration {
 	return 0
 }
 
-func (a *auth) recordFailure(ip string) {
+// recordFailure counts a wrong PIN. It reports whether that visitor now has
+// to wait.
+func (a *auth) recordFailure(ip string) (lockedOut bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now := time.Now()
@@ -142,6 +145,7 @@ func (a *auth) recordFailure(ip string) {
 	if a.failures[ip] >= perIPTries {
 		a.failures[ip] = 0
 		a.lockedUntil[ip] = now.Add(perIPLockout)
+		lockedOut = true
 	}
 	kept := a.globalFails[:0]
 	for _, t := range a.globalFails {
@@ -155,6 +159,7 @@ func (a *auth) recordFailure(ip string) {
 		a.globalLockEnd = now.Add(globalLockout)
 		logf("Too many wrong PINs, logins paused for 10 minutes")
 	}
+	return lockedOut
 }
 
 func (a *auth) loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -173,11 +178,13 @@ func (a *auth) loginHandler(w http.ResponseWriter, r *http.Request) {
 			delete(a.failures, ip)
 			a.mu.Unlock()
 			a.setCookie(w, r)
-			logf("%s logged in", ip)
+			logf("%s logged in", who(r))
 			http.Redirect(w, r, next, http.StatusSeeOther)
 			return
 		} else {
-			a.recordFailure(ip)
+			if a.recordFailure(ip) {
+				logf("%s typed a wrong PIN %d times and has to wait a minute", who(r), perIPTries)
+			}
 			data.Error = "That PIN is not right."
 		}
 		w.WriteHeader(http.StatusUnauthorized)

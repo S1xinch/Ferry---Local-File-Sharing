@@ -90,7 +90,10 @@ aside h2{margin:0 0 2px;font-size:18px}
 .section{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--dim);margin:20px 0 6px}
 .field{margin:12px 0}
 .field>label{display:block;font-weight:600;margin-bottom:3px}
-.field input,.field select{width:100%}
+.field input,.field select,.field textarea{width:100%}
+.choices{margin:12px 0}
+.choices .flabel{display:block;font-weight:600;margin-bottom:3px}
+.choices .check{margin:7px 0}
 .hint{color:var(--dim);font-size:12px;margin:3px 0 0}
 .check{display:flex;gap:9px;align-items:flex-start;margin:12px 0;cursor:pointer}
 .check input{margin:3px 0 0;flex:none}
@@ -164,6 +167,10 @@ dialog h3{margin:0 0 10px;font-size:16px}
 .plain-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
 .plain-list li:last-child{border-bottom:1px solid var(--line)}
 .logbox{max-height:150px;overflow:auto;border:1px solid var(--line);border-radius:4px;padding:2px 8px}
+#tnew{width:100%;min-height:56px}
+.plain-list li.tmsg{align-items:flex-start}
+.tmsg>div{min-width:0}
+.ttext{white-space:pre-wrap;overflow-wrap:anywhere;max-height:8em;overflow:auto;margin-top:2px}
 #toast{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:4px;max-width:80vw;display:none;z-index:20}
 #toast.show{display:block}
 #toast.err{background:var(--out-fill);color:var(--out-ink)}
@@ -233,18 +240,23 @@ dialog h3{margin:0 0 10px;font-size:16px}
 
 <main class="page" id="page-share">
 <div class="list">
-<div class="bar"><span class="label">What visitors see</span><span class="sub grow" id="preview-count"></span><button type="button" class="small" id="preview-refresh">Refresh</button></div>
+<div class="bar"><span class="label" id="preview-label">What visitors see</span><span class="sub grow" id="preview-count"></span><button type="button" class="small" id="preview-refresh">Refresh</button></div>
 <div id="preview"></div>
 </div>
 <aside>
 <div id="setup">
 <h2 id="setup-title">Share a folder</h2>
 <div class="sub">Anyone with the link and the PIN can open it in a browser.</div>
+<p class="hint" id="stopped" hidden></p>
 <div class="seg"><button type="button" data-mode="files">A folder</button><button type="button" data-mode="site">A website</button></div>
 <div id="files-opts">
 <div class="field"><label for="folder">Folder</label>
 <div class="row"><input type="text" id="folder" placeholder="Choose a folder, or paste its path"><button type="button" id="browse">Browse</button></div></div>
-<label class="check"><input type="checkbox" id="uploads"><span>Let visitors upload files into this folder</span></label>
+<div class="choices" role="radiogroup" aria-labelledby="access-label"><span class="flabel" id="access-label">Visitors can</span>
+<label class="check"><input type="radio" name="access" value="view"><span>Open and download files</span></label>
+<label class="check"><input type="radio" name="access" value="upload"><span>Open, download and upload files<span class="hint">Nothing in the folder is ever replaced by an upload.</span></span></label>
+<label class="check"><input type="radio" name="access" value="drop"><span>Only upload files<span class="hint">They cannot see what is in the folder. Handy for collecting photos from a group.</span></span></label>
+</div>
 <label class="check"><input type="checkbox" id="keeppin"><span>Keep the same PIN when sharing starts again<span class="hint">Needed if another computer keeps a copy of this folder up to date.</span></span></label>
 </div>
 <div id="site-opts" hidden>
@@ -253,6 +265,14 @@ dialog h3{margin:0 0 10px;font-size:16px}
 <p class="hint">Start the website on this computer first. Common ports: 3000, 5173, 8000.</p></div>
 </div>
 <label class="check"><input type="checkbox" id="internet"><span>Also allow access from outside this Wi-Fi<span class="hint">Gives a free link that works anywhere. Visitors still need the PIN.</span></span></label>
+<div class="field"><label for="stopafter">Stop sharing by itself</label>
+<select id="stopafter" style="width:auto">
+<option value="0">Never, I will stop it</option>
+<option value="15">After 15 minutes</option>
+<option value="60">After 1 hour</option>
+<option value="240">After 4 hours</option>
+<option value="1440">After 1 day</option>
+</select></div>
 <p class="error" id="err" hidden></p>
 <div class="row-btns"><button type="button" class="primary" id="start">Start sharing</button></div>
 </div>
@@ -261,11 +281,20 @@ dialog h3{margin:0 0 10px;font-size:16px}
 <div class="state"><span class="dot"></span>Sharing now</div>
 <h2 id="live-name"></h2>
 <div class="sub mono" id="what"></div>
-<div class="stat"><div class="pin">PIN<b id="pin"></b></div><div id="uploads-stat">Uploads<b id="uploads-val"></b></div></div>
+<div class="stat"><div class="pin">PIN<b id="pin"></b></div><div id="uploads-stat">Uploads<b id="uploads-val"></b></div><div id="ends-stat" hidden>Stops in<b id="ends-val"></b></div></div>
 <p class="hint">Visitors type the PIN when they open the link.</p>
 <div id="links"></div>
 <p class="hint" id="net" hidden></p>
 <p class="hint" style="margin-top:10px">Scanning a code logs in without the PIN, so only show codes to people you trust. Keep this computer awake while sharing.</p>
+<div class="section">Visitors</div>
+<table class="log"><tbody id="visitors"></tbody></table>
+<div id="text-box">
+<div class="section">Text</div>
+<textarea id="tnew" rows="2" maxlength="10000" placeholder="Paste a link or a note to show visitors"></textarea>
+<div class="row-btns" style="margin-top:6px"><button type="button" class="small primary" id="tsend">Send</button><button type="button" class="small" id="tclear" hidden>Clear all</button></div>
+<p class="hint">Visitors see texts on their page and, if they can upload, can send you some back. Everyone with the PIN can read them. They are gone when sharing stops.</p>
+<ul class="plain-list" id="texts"></ul>
+</div>
 <div class="section">Recent activity</div>
 <table class="log"><tbody id="log"></tbody></table>
 <div class="row-btns"><button type="button" class="danger" id="stop">Stop sharing</button></div>
@@ -400,7 +429,7 @@ dialog h3{margin:0 0 10px;font-size:16px}
 var $ = function (id) { return document.getElementById(id); };
 var version = {{.Version}};
 var mode = "files", formFilled = false, firstRender = true, lastLinks = "", running = false, receiving = false, last = null;
-var previewFolder = "", closing = "", laterVersion = "", lastActivity = "";
+var previewFolder = "", closing = "", laterVersion = "", lastActivity = "", visitorsKey = "", textsKey = "", lastTextId = -1;
 var BADGE_LOW = '<span class="badge low"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.2L11.2 10.5H0.8Z" fill="currentColor" opacity=".25"/><path d="M6 4.3v3M6 8.9v.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>Waiting</span>';
 var ICON_OUT = '<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5.5" fill="currentColor" opacity=".25"/><path d="M3.8 3.8l4.4 4.4M8.2 3.8L3.8 8.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
 
@@ -512,6 +541,11 @@ document.querySelectorAll(".seg button").forEach(function (b) { b.onclick = func
 
 function showError(id, msg) { $(id).textContent = cap(msg); $(id).hidden = !msg; }
 
+// access is what visitors can do with a shared folder: view, upload or drop.
+function access() { var r = document.querySelector("input[name=access]:checked"); return r ? r.value : "upload"; }
+function setAccess(v) { document.querySelectorAll("input[name=access]").forEach(function (r) { r.checked = r.value === v; }); }
+document.querySelectorAll("input[name=access]").forEach(function (r) { r.onchange = function () { showPreview(true); }; });
+
 function browseInto(button, input, done) {
   button.disabled = true;
   call("/api/pick", {}).then(function (r) { if (r.folder) { input.value = r.folder; if (done) done(); } })
@@ -532,6 +566,9 @@ function showPreview(force) {
   var folder = running ? last.what : previewFolder;
   var port = running ? last.settings.target : parseInt($("target").value, 10) || 0;
   var key = site ? "site:" + port : "folder:" + folder;
+  // In a drop box visitors see none of this, but it is still useful here.
+  var drop = !site && (running ? !!last.settings.dropOnly : access() === "drop");
+  $("preview-label").textContent = drop ? "In this folder" : "What visitors see";
   if (!force && key === previewKey) return;
   previewKey = key;
   var box = $("preview"), seq = ++previewSeq;
@@ -542,7 +579,7 @@ function showPreview(force) {
   call("/api/local/list", {path: folder, name: ""}).then(function (l) {
     if (seq !== previewSeq) return;
     var es = l.entries || [];
-    $("preview-count").textContent = es.length + (es.length === 1 ? " item" : " items");
+    $("preview-count").textContent = es.length + (es.length === 1 ? " item" : " items") + (drop ? ", visitors cannot see them" : "");
     if (!es.length) { box.textContent = ""; box.appendChild(el("div", "empty", "This folder is empty.")); return; }
     var table = el("table", "files"), head = el("thead"), hr = el("tr"), body = el("tbody");
     [["Name", ""], ["Size", "sz num"], ["Modified", "dt num"]].forEach(function (h) { hr.appendChild(el("th", h[1], h[0])); });
@@ -569,18 +606,91 @@ function showPreview(force) {
 $("start").onclick = function () {
   showError("err", "");
   $("start").disabled = true;
+  var acc = access();
   call("/api/start", {
     mode: mode, folder: $("folder").value, target: parseInt($("target").value, 10) || 0,
-    uploads: $("uploads").checked, internet: $("internet").checked, keepPin: $("keeppin").checked
+    uploads: acc !== "view", dropOnly: acc === "drop", internet: $("internet").checked, keepPin: $("keeppin").checked,
+    stopAfter: parseInt($("stopafter").value, 10) || 0
   }).then(refresh).catch(function (e) { showError("err", e.message); })
     .finally(function () { $("start").disabled = false; });
 };
 $("stop").onclick = function () { call("/api/stop", {}).then(function () { formFilled = false; refresh(); }); };
 
-function copyLink(url) {
-  navigator.clipboard.writeText(url).then(function () { toast("Link copied"); },
-    function () { toast("Could not copy. Select the link and copy it yourself.", true); });
+function copyText(text, done) {
+  navigator.clipboard.writeText(text).then(function () { toast(done); },
+    function () { toast("Could not copy. Select it and copy it yourself.", true); });
 }
+function copyLink(url) { copyText(url, "Link copied"); }
+
+// linkify adds text to box with web addresses as links.
+function linkify(box, text) {
+  text.split(/(https?:\/\/[^\s<>"]+)/).forEach(function (part, i) {
+    if (i % 2) { var a = el("a", "", part); a.href = part; a.target = "_blank"; a.rel = "noopener"; box.appendChild(a); }
+    else if (part) box.appendChild(document.createTextNode(part));
+  });
+}
+
+// fmtLeft turns seconds into "45 min" or "3 h 10 min".
+function fmtLeft(sec) {
+  var m = Math.ceil(sec / 60);
+  if (m < 60) return m + " min";
+  return Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
+}
+
+function renderVisitors(list) {
+  var key = JSON.stringify(list);
+  if (key === visitorsKey) return;
+  visitorsKey = key;
+  var body = $("visitors");
+  body.textContent = "";
+  if (!list.length) list = [{seen: "", device: "Nobody has opened it yet."}];
+  list.slice(0, 10).forEach(function (v) {
+    var tr = el("tr");
+    tr.appendChild(el("td", "", cap(v.seen)));
+    tr.appendChild(el("td", "", v.ip ? v.device + " (" + v.ip + ")" : v.device));
+    body.appendChild(tr);
+  });
+}
+
+function renderTexts(list) {
+  $("tclear").hidden = !list.length;
+  // Say so when a visitor sends something, but not for texts already there.
+  var newest = list.length ? list[0].id : 0;
+  if (lastTextId >= 0 && newest > lastTextId && !list[0].host) toast("New text from " + list[0].from);
+  lastTextId = newest;
+  var key = list.map(function (t) { return t.id; }).join(",");
+  if (key === textsKey) return;
+  textsKey = key;
+  var box = $("texts");
+  box.textContent = "";
+  list.forEach(function (t) {
+    var li = el("li", "tmsg"), left = el("div"), body = el("div", "ttext");
+    left.appendChild(el("div", "sub", (t.host ? "You" : t.from) + ", " + t.time));
+    linkify(body, t.text);
+    left.appendChild(body);
+    var copy = el("button", "small", "Copy");
+    copy.type = "button";
+    copy.onclick = function () { copyText(t.text, "Text copied"); };
+    li.appendChild(left);
+    li.appendChild(copy);
+    box.appendChild(li);
+  });
+}
+
+function sendText() {
+  var v = $("tnew").value;
+  if (!v.trim()) { $("tnew").focus(); return; }
+  $("tsend").disabled = true;
+  call("/api/text", {text: v}).then(function () { $("tnew").value = ""; return refresh(); })
+    .catch(function (e) { toast(e.message, true); })
+    .finally(function () { $("tsend").disabled = false; });
+}
+$("tsend").onclick = sendText;
+$("tnew").onkeydown = function (ev) { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); sendText(); } };
+$("tclear").onclick = function () {
+  ask({title: "Clear all texts?", text: "Visitors will not see them any more.", ok: "Clear all", danger: true})
+    .then(function (yes) { if (yes) call("/api/text/clear", {}).then(refresh); });
+};
 
 function renderLinks(links) {
   var key = JSON.stringify(links.map(function (l) { return l.url; }));
@@ -1212,7 +1322,9 @@ function render(s) {
     $("folder").value = st.folder || "";
     previewFolder = st.folder || "";
     $("target").value = st.target || 3000;
-    $("uploads").checked = !!st.uploads;
+    setAccess(st.dropOnly ? "drop" : st.uploads ? "upload" : "view");
+    $("stopafter").value = String(st.stopAfter || 0);
+    if (!$("stopafter").value) $("stopafter").value = "0";
     $("internet").checked = !!st.internet;
     $("keeppin").checked = !!st.keepPin;
     if (!$("server").value) $("server").value = st.server || "";
@@ -1232,13 +1344,24 @@ function render(s) {
     $("what").textContent = site ? "Visitors see the website running on this computer." : s.what;
     $("pin").textContent = s.pin;
     $("uploads-stat").hidden = site;
-    $("uploads-val").textContent = s.settings.uploads ? "Allowed" : "Off";
+    $("uploads-val").textContent = s.settings.dropOnly ? "Only uploads" : s.settings.uploads ? "Allowed" : "Off";
+    $("ends-stat").hidden = !s.endsIn;
+    if (s.endsIn) {
+      $("ends-val").textContent = fmtLeft(s.endsIn);
+      $("ends-stat").title = "Sharing stops by itself at " + s.endsAt;
+    }
+    $("text-box").hidden = site;
+    renderVisitors(s.visitors || []);
+    renderTexts(s.texts || []);
     renderLinks(s.links || []);
     $("net").textContent = s.internetStatus || "";
     $("net").hidden = !s.internetStatus;
   } else {
     lastLinks = "";
+    lastTextId = -1;
   }
+  $("stopped").textContent = s.running ? "" : s.stopped || "";
+  $("stopped").hidden = s.running || !s.stopped;
   // Refresh the list when something happens, like a visitor uploading a file.
   var top = s.activity[0] || "";
   showPreview(s.running && top !== lastActivity && top.indexOf("Received ") >= 0);

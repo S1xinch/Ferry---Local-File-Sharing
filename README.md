@@ -36,11 +36,25 @@ You only have to do that once. If macOS asks whether Ferry can accept incoming c
 3. Click **Start sharing**.
 4. On the other device, scan the QR code, or type in the link and the PIN.
 
+While you share, the window lists who has opened it (like "iPhone (192.168.1.23)") and when they were last there, and the recent activity shows what they opened, downloaded or uploaded.
+
 You can close the window and sharing carries on. Open Ferry again, or on a Mac click it in the Dock, to get the window back, and hit **Stop sharing** when you're finished, or **Quit Ferry** in **Settings**. If nothing is being shared and the window has been closed for 3 minutes, it quits on its own.
+
+If you only need it for a while, pick a time under **Stop sharing by itself** (15 minutes, an hour, 4 hours or a day) before you start. The window counts down, and sharing stops at that time even if you've forgotten about it.
 
 ### Sharing a folder
 
-People can browse it, open or download files, grab a whole folder as a zip, and drag files onto the page to upload them. Pictures show a small thumbnail in the list, and other files show a tag with their type, like PDF or ZIP. You can turn uploads off before you start. Nothing gets overwritten: if someone uploads a second `photo.jpg` it's saved as `photo (1).jpg`.
+Under **Visitors can**, choose what people get:
+
+- **Open and download files.** They can browse it, open or download files and grab a whole folder as a zip.
+- **Open, download and upload files.** The same, plus dragging files onto the page to upload them.
+- **Only upload files.** A drop box: they get a page to send you files and can't see anything already in the folder. Handy for collecting photos from everyone after a party. Drop boxes don't show up on other computers' Receive page.
+
+Pictures show a small thumbnail in the list, and other files show a tag with their type, like PDF or ZIP. Nothing gets overwritten: if someone uploads a second `photo.jpg` it's saved as `photo (1).jpg`.
+
+### Sending a link or a note
+
+While you share a folder, the **Text** box in the window shows a link, a Wi-Fi password or a note to everyone on the folder page, with a **Copy** button. If visitors can upload, they can send text back the same way, and it appears in the window. Everyone with the PIN can read the texts, and they're gone when sharing stops.
 
 ### Sharing a website
 
@@ -76,6 +90,7 @@ Each time Ferry opens, it checks GitHub for a newer release. If there is one, it
 - 5 wrong PINs locks that device out for a minute. 30 wrong PINs from anyone pauses all logins for 10 minutes.
 - Visitors can't see anything outside the folder you picked.
 - The QR codes log people in without the PIN, so only show them to people you trust.
+- The window shows every device that has opened the share. If you see one you don't recognise, stop sharing and start again to get a new PIN (untick **Keep the same PIN** first if it's on).
 - The Ferry window only opens on your own computer. Other devices can't control it.
 - On the same Wi-Fi the connection isn't encrypted, so someone else on that network could in theory see what's being sent. Stick to networks you trust. The anywhere link is encrypted (HTTPS).
 - On the Transfer files page, SFTP, FTP over TLS and FTPS are encrypted. Plain FTP sends everything, including your password, as readable text, so only use it on your own network.
@@ -98,11 +113,15 @@ ferry files                  share the current folder
 ferry files ~/Pictures       share a specific folder
 ferry site 3000              share a website running on port 3000
 
-  --internet     also give a link that works from anywhere
-  --pin 123456   pick the PIN yourself
-  --port 8080    pick the port (otherwise the first free one from 8080)
-  --read-only    people can download but not upload
+  --internet        also give a link that works from anywhere
+  --pin 123456      pick the PIN yourself
+  --port 8080       pick the port (otherwise the first free one from 8080)
+  --read-only       people can download but not upload
+  --drop            people can upload but cannot see what is in the folder
+  --stop-after 1h   stop sharing by itself after this long (like 30m or 2h)
 ```
+
+Texts that visitors send are printed in the terminal.
 
 ## If something's not working
 
